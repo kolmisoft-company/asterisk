@@ -5021,6 +5021,8 @@ int ast_channel_stream_topology_changed_externally(struct ast_channel *chan);
  */
 void *ast_channel_get_stream_topology_change_source(struct ast_channel *chan);
 
+ast_mutex_t *ast_channels_get_mutex(void);
+
 /*!
  * \brief Checks if a channel's technology implements a particular callback function
  * \since 18.0.0
