@@ -9725,7 +9725,7 @@ static int sip_register(const char *value, int lineno)
 			}
 
 			if (line) {
-				free(line);
+				ast_free(line);
 				line = NULL;
 			}
 
@@ -32661,7 +32661,7 @@ static int cleanup_registration(void *obj, void *arg, int flags)
 			}
 
 			if (line) {
-				free(line);
+				ast_free(line);
 				line = NULL;
 			}
 
