@@ -1431,6 +1431,7 @@ struct sip_registry {
 	struct ast_sockaddr us;  /*!< Who the server thinks we are */
 	int noncecount;         /*!< Nonce-count */
 	char lastmsg[256];      /*!< Last Message sent/received */
+	int skip_reregister_on_reload;   /*!< Should we skip reregister on reload? Kolmisoft */
 };
 
 struct tcptls_packet {
