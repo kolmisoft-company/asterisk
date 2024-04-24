@@ -35686,6 +35686,8 @@ static const struct ast_sip_api_tech chan_sip_api_provider = {
 
 static void deprecation_notice(void)
 {
+	return;
+
 	ast_log(LOG_WARNING, "chan_sip has no official maintainer and is deprecated.  Migration to\n");
 	ast_log(LOG_WARNING, "chan_pjsip is recommended.  See guides at the Asterisk Wiki:\n");
 	ast_log(LOG_WARNING, "https://wiki.asterisk.org/wiki/display/AST/Migrating+from+chan_sip+to+res_pjsip\n");

@@ -2499,7 +2499,7 @@ done:
 			}
 		}
 
-		if (ast_str_strlen(warning_msg)) {
+		if (ast_str_strlen(warning_msg) && strcmp(mod_name, "chan_sip") != 0) {
 			ast_log(LOG_WARNING, "%s\n", ast_str_buffer(warning_msg));
 		}
 
