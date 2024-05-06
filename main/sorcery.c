@@ -1345,8 +1345,10 @@ static int sorcery_object_load(void *obj, void *arg, int flags)
 	details->type = type->name;
 
 	if (details->reload && !sorcery_reloadable(details->sorcery, details->type)) {
-		ast_log(LOG_NOTICE, "Type '%s' is not reloadable, maintaining previous values\n",
-			details->type);
+		if (strcmp(details->type, "system") != 0) {
+			ast_log(LOG_NOTICE, "Type '%s' is not reloadable, maintaining previous values\n",
+				details->type);
+		}
 		return 0;
 	}
 

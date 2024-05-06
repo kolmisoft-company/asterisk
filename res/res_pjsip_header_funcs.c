@@ -49,7 +49,7 @@
 				<enumlist>
 					<enum name="read"><para>Returns instance <replaceable>number</replaceable>
 					of header <replaceable>name</replaceable>. A <literal>*</literal>
-					may be appended to <replaceable>name</replaceable> to iterate over all 
+					may be appended to <replaceable>name</replaceable> to iterate over all
 					headers <emphasis>beginning with</emphasis> <replaceable>name</replaceable>.
 					</para></enum>
 
@@ -166,6 +166,44 @@
 		</description>
 		<see-also>
 			<ref type="function">PJSIP_HEADER</ref>
+		</see-also>
+	</function>
+	<function name="PJSIP_HEADER_EXPORT" language="en_US">
+		<since>
+			<version>20.0.7</version>
+		</since>
+		<synopsis>
+			Export SIP header from inbound channel to outbound channel.
+		</synopsis>
+		<syntax>
+			<parameter name="header" required="true">
+				<para>Name of the header.</para>
+			</parameter>
+		</syntax>
+		<description>
+			<para>Export SIP header from inbound channel to outbound channel.</para>
+		</description>
+		<see-also>
+			<ref type="function">PJSIP_HEADER_EXPORT_RM</ref>
+		</see-also>
+	</function>
+	<function name="PJSIP_HEADER_EXPORT_RM" language="en_US">
+		<since>
+			<version>20.0.7</version>
+		</since>
+		<synopsis>
+			Removes a header previously exported by PJSIP_HEADER_EXPORT.
+		</synopsis>
+		<syntax>
+			<parameter name="header" required="true">
+				<para>Name of the header.</para>
+			</parameter>
+		</syntax>
+		<description>
+			<para>Removes a header previously exported by PJSIP_HEADER_EXPORT.</para>
+		</description>
+		<see-also>
+			<ref type="function">PJSIP_HEADER_EXPORT</ref>
 		</see-also>
 	</function>
 	<function name="PJSIP_RESPONSE_HEADER" language="en_US">
@@ -984,6 +1022,153 @@ static int func_write_header(struct ast_channel *chan, const char *cmd, char *da
 	}
 }
 
+/*! \brief Adds exported SIP headers to outgoing request */
+static void add_exported_headers(struct ast_channel *chan, pjsip_tx_data *tdata)
+{
+	if (!chan) {
+		return;
+	}
+
+	struct varshead *headp;
+	ast_channel_lock(chan);
+	headp = ast_channel_varshead(chan);
+
+	if (headp) {
+		const struct ast_var_t *current;
+
+		AST_LIST_TRAVERSE(headp, current, entries) {
+			if (strncmp(ast_var_name(current), "SIPADDHEADER", 12) == 0) {
+				const char *header = ast_var_value(current);
+				char *header_name = ast_strdupa(header);
+				char *header_value;
+				char *end;
+
+				if (!header_name) {
+					return;
+				}
+
+				/* Strip of the starting " (if it's there) */
+				if (*header_name == '"') {
+					header_name++;
+				}
+
+				if ((header_value = strchr(header_name, ':'))) {
+					*header_value++ = '\0';
+					header_value = ast_skip_blanks(header_value); /* Skip white space */
+					/* Strip the ending " (if it's there) */
+					end = header_value + strlen(header_value) - 1;
+
+					if (*end == '"') {
+						*end = '\0';
+					}
+
+					ast_debug(1, "Adding exported SIP header: [%s: %s]\n", header_name, header_value);
+					ast_sip_add_header(tdata, header_name, header_value);
+				} else {
+					ast_log(LOG_WARNING, "Invalid exported SIP header format: %s\n", ast_var_value(current));
+				}
+			}
+		}
+	}
+
+	ast_channel_unlock(chan);
+}
+
+/*! \brief Export SIP headers to outbound channel */
+static int func_export_header(struct ast_channel *chan, const char *cmd, char *data,
+							 const char *value)
+{
+	if (chan) {
+		if (strncmp(ast_channel_name(chan), "PJSIP/", 6)) {
+			ast_log(LOG_ERROR, "This function requires a PJSIP channel.\n");
+			return -1;
+		}
+
+		if (!strlen(data)) {
+			ast_log(LOG_WARNING, "No header name specified for SIP header exporting\n");
+			return -1;
+		}
+
+		if (!strlen(value)) {
+			ast_log(LOG_WARNING, "No value specified for exported SIP header: %s\n", data);
+			return -1;
+		}
+
+		ast_debug(1, "Exporting SIP header: %s\n", value);
+
+		char hdr_var_name[30];
+		char hdr_pos_str[12];
+		int hdr_pos = 0;
+		int total_len = strlen(data) + strlen(value) + 3;
+		char *hdr_str = ast_alloca(total_len);
+
+		sprintf(hdr_str, "%s: %s", data, value);
+
+		ast_channel_lock(chan);
+		const char *hdr_pos_ptr = pbx_builtin_getvar_helper(chan, "POSSIPADDHEADER");
+
+		if (hdr_pos_ptr) {
+			hdr_pos = atoi(hdr_pos_ptr);
+		}
+
+		if (hdr_pos >= 50) {
+			ast_log(LOG_WARNING, "Maximum number of exported headers reached [50]\n");
+			ast_channel_unlock(chan);
+			return -1;
+		}
+
+		hdr_pos++;
+		sprintf(hdr_pos_str, "%d", hdr_pos);
+		sprintf(hdr_var_name, "__SIPADDHEADER%.2d", hdr_pos);
+		pbx_builtin_setvar_helper(chan, hdr_var_name, hdr_str);
+		pbx_builtin_setvar_helper(chan, "__POSSIPADDHEADER", hdr_pos_str);
+		ast_channel_unlock(chan);
+	}
+
+	return 0;
+}
+
+static int func_remove_exported_header(struct ast_channel *chan, const char *cmd, char *data,
+							 const char *value)
+{
+	if (chan) {
+		if (strncmp(ast_channel_name(chan), "PJSIP/", 6)) {
+			ast_log(LOG_ERROR, "This function requires a PJSIP channel.\n");
+			return -1;
+		}
+
+		ast_channel_lock(chan);
+		struct ast_var_t *var;
+		struct varshead *headp = ast_channel_varshead(chan);
+
+		ast_debug(1, "Removing exported SIP header: %s\n", data);
+
+		AST_LIST_TRAVERSE_SAFE_BEGIN (headp, var, entries) {
+			if (strncmp(ast_var_name(var), "SIPADDHEADER", 12) == 0) {
+				if (strncasecmp(ast_var_value(var), data, strlen(data)) == 0) {
+					AST_LIST_REMOVE_CURRENT(entries);
+					ast_var_delete(var);
+				}
+			}
+		}
+		AST_LIST_TRAVERSE_SAFE_END;
+
+		ast_channel_unlock(chan);
+	}
+
+	return 0;
+}
+
+static struct ast_custom_function pjsip_header_export_function = {
+	.name = "PJSIP_HEADER_EXPORT",
+	.write = func_export_header,
+};
+
+static struct ast_custom_function pjsip_header_export_rm_function = {
+	.name = "PJSIP_HEADER_EXPORT_RM",
+	.write = func_remove_exported_header,
+};
+
 static struct ast_custom_function pjsip_header_function = {
 	.name = "PJSIP_HEADER",
 	.read = func_read_header,
@@ -1021,6 +1206,12 @@ static void outgoing_request(struct ast_sip_session *session, pjsip_tx_data * td
 {
 	struct hdr_list *list;
 	struct hdr_list_entry *le;
+
+	// Add exported headers to the outgoing request
+	if (session->channel && tdata) {
+		add_exported_headers(session->channel, tdata);
+	}
+
 	RAII_VAR(struct ast_datastore *, datastore,
 			 ast_sip_session_get_datastore(session, header_datastore.type), ao2_cleanup);
 
@@ -1266,6 +1457,8 @@ static struct ast_custom_function pjsip_header_param_function = {
 static int load_module(void)
 {
 	ast_sip_session_register_supplement(&header_funcs_supplement);
+	ast_custom_function_register(&pjsip_header_export_function);
+	ast_custom_function_register(&pjsip_header_export_rm_function);
 	ast_custom_function_register(&pjsip_header_function);
 	ast_custom_function_register(&pjsip_headers_function);
 	ast_custom_function_register(&pjsip_response_header_function);
@@ -1277,6 +1470,8 @@ static int load_module(void)
 
 static int unload_module(void)
 {
+	ast_custom_function_unregister(&pjsip_header_export_function);
+	ast_custom_function_unregister(&pjsip_header_export_rm_function);
 	ast_custom_function_unregister(&pjsip_header_function);
 	ast_custom_function_unregister(&pjsip_headers_function);
 	ast_custom_function_unregister(&pjsip_response_header_function);
