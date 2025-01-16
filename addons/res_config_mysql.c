@@ -322,6 +322,8 @@ static struct ast_variable *realtime_mysql(const char *database, const char *tab
 	char *escape = "";
 	const struct ast_variable *field = rt_fields;
 	struct ast_variable *var=NULL, *prev=NULL;
+	/* Kolmisoft */
+	char sip_driver_condition[50];
 
 	if (!(dbh = find_database(database, 0))) {
 		ast_log(LOG_WARNING, "MySQL RealTime: Invalid database specified: %s (check res_mysql.conf)\n", database);
@@ -359,8 +361,16 @@ static struct ast_variable *realtime_mysql(const char *database, const char *tab
 		}
 	}
 
+	/* Kolmisoft */
+	/* Add special 'sip_driver' condition when retrieving data from 'devices' table to skip PJSIP devices */
+	if (strcmp(table, "devices") == 0) {
+		strcpy(sip_driver_condition, "sip_driver = 'chan_sip' AND ");
+	} else {
+		sip_driver_condition[0] = '\0';
+	}
+
 	ESCAPE_STRING(buf, field->value);
-	ast_str_set(&sql, 0, "SELECT * FROM %s WHERE %s%s '%s'%s", table, field->name, op, ast_str_buffer(buf), escape);
+	ast_str_set(&sql, 0, "SELECT * FROM %s WHERE %s%s%s '%s'%s", table, sip_driver_condition, field->name, op, ast_str_buffer(buf), escape);
 	while ((field = field->next)) {
 		escape = "";
 		if (!strchr(field->name, ' ')) {
@@ -435,6 +445,8 @@ static struct ast_config *realtime_multi_mysql(const char *database, const char 
 	struct ast_variable *var = NULL;
 	struct ast_config *cfg = NULL;
 	struct ast_category *cat = NULL;
+	/* Kolmisoft */
+	char sip_driver_condition[50];
 
 	if (!(dbh = find_database(database, 0))) {
 		ast_log(LOG_WARNING, "MySQL RealTime: Invalid database specified: '%s' (check res_mysql.conf)\n", database);
@@ -486,8 +498,16 @@ static struct ast_config *realtime_multi_mysql(const char *database, const char 
 		}
 	}
 
+	/* Kolmisoft */
+	/* Add special 'sip_driver' condition when retrieving data from 'devices' table to skip PJSIP devices */
+	if (strcmp(table, "devices") == 0) {
+		strcpy(sip_driver_condition, "sip_driver = 'chan_sip' AND ");
+	} else {
+		sip_driver_condition[0] = '\0';
+	}
+
 	ESCAPE_STRING(buf, field->value);
-	ast_str_set(&sql, 0, "SELECT * FROM %s WHERE %s%s '%s'%s", table, field->name, op, ast_str_buffer(buf), escape);
+	ast_str_set(&sql, 0, "SELECT * FROM %s WHERE %s%s%s '%s'%s", table, sip_driver_condition, field->name, op, ast_str_buffer(buf), escape);
 	while ((field = field->next)) {
 		escape = "";
 		if (!strchr(field->name, ' ')) {
