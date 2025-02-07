@@ -733,7 +733,7 @@ static struct ast_channel *__attribute__((format(printf, 15, 0)))
 __ast_channel_alloc_ap(int needqueue, int state, const char *cid_num, const char *cid_name,
 		       const char *acctcode, const char *exten, const char *context, const struct ast_assigned_ids *assignedids,
 		       const struct ast_channel *requestor, enum ama_flags amaflag, struct ast_endpoint *endpoint,
-		       const char *file, int line,
+		       struct ast_channel_initializers *initializers, const char *file, int line,
 		       const char *function, const char *name_fmt, va_list ap)
 {
 	struct ast_channel *tmp;
@@ -752,7 +752,7 @@ __ast_channel_alloc_ap(int needqueue, int state, const char *cid_num, const char
 		return NULL;
 	}
 
-	tmp = __ast_channel_internal_alloc(ast_channel_destructor, assignedids, requestor,
+	tmp = __ast_channel_internal_alloc_with_initializers(ast_channel_destructor, assignedids, requestor, initializers,
 		file, line, function);
 	if (!tmp) {
 		/* Channel structure allocation failure. */
@@ -964,7 +964,26 @@ struct ast_channel *__ast_channel_alloc(int needqueue, int state, const char *ci
 
 	va_start(ap, name_fmt);
 	result = __ast_channel_alloc_ap(needqueue, state, cid_num, cid_name, acctcode, exten, context,
-					assignedids, requestor, amaflag, endpoint, file, line, function, name_fmt, ap);
+					assignedids, requestor, amaflag, endpoint, NULL, file, line, function, name_fmt, ap);
+	va_end(ap);
+
+	return result;
+}
+
+struct ast_channel *__ast_channel_alloc_with_initializers(int needqueue, int state, const char *cid_num,
+					const char *cid_name, const char *acctcode,
+					const char *exten, const char *context, const struct ast_assigned_ids *assignedids,
+					const struct ast_channel *requestor, enum ama_flags amaflag,
+					struct ast_endpoint *endpoint, struct ast_channel_initializers *initializers,
+					const char *file, int line, const char *function,
+					const char *name_fmt, ...)
+{
+	va_list ap;
+	struct ast_channel *result;
+
+	va_start(ap, name_fmt);
+	result = __ast_channel_alloc_ap(needqueue, state, cid_num, cid_name, acctcode, exten, context,
+					assignedids, requestor, amaflag, endpoint, initializers, file, line, function, name_fmt, ap);
 	va_end(ap);
 
 	return result;
@@ -3318,6 +3337,7 @@ int ast_waitfordigit_full(struct ast_channel *c, int timeout_ms, const char *bre
 					ast_channel_clear_flag(c, AST_FLAG_END_DTMF_ONLY);
 					return res;
 				case AST_CONTROL_PVT_CAUSE_CODE:
+				case AST_CONTROL_PROGRESS:
 				case AST_CONTROL_RINGING:
 				case AST_CONTROL_ANSWER:
 				case AST_CONTROL_SRCUPDATE:
@@ -6828,6 +6848,7 @@ static void __ast_change_name_nolink(struct ast_channel *chan, const char *newna
 	/*** DOCUMENTATION
 		<managerEvent language="en_US" name="Rename">
 			<managerEventInstance class="EVENT_FLAG_CALL">
+				<since><version>16.24.0</version><version>18.10.0</version><version>19.2.0</version></since>
 				<synopsis>Raised when the name of a channel is changed.</synopsis>
 			</managerEventInstance>
 		</managerEvent>
@@ -7285,6 +7306,9 @@ static void channel_do_masquerade(struct ast_channel *original, struct ast_chann
 
 	/* copy over accuntcode and set peeraccount across the bridge */
 	ast_channel_accountcode_set(original, S_OR(ast_channel_accountcode(clonechan), ""));
+
+	/* copy over userfield */
+	ast_channel_userfield_set(original, ast_channel_userfield(clonechan));
 
 	ast_debug(1, "Putting channel %s in %s/%s formats\n", ast_channel_name(original),
 		ast_format_get_name(wformat), ast_format_get_name(rformat));

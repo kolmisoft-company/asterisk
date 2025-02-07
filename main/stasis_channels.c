@@ -44,6 +44,7 @@
 /*** DOCUMENTATION
 	<managerEvent language="en_US" name="VarSet">
 		<managerEventInstance class="EVENT_FLAG_DIALPLAN">
+			<since><version>12.0.0</version></since>
 			<synopsis>Raised when a variable is set to a particular value.</synopsis>
 			<syntax>
 				<channel_snapshot/>
@@ -58,6 +59,7 @@
 	</managerEvent>
 	<managerEvent language="en_US" name="AgentLogin">
 		<managerEventInstance class="EVENT_FLAG_AGENT">
+			<since><version>12.0.0</version></since>
 			<synopsis>Raised when an Agent has logged in.</synopsis>
 			<syntax>
 				<channel_snapshot/>
@@ -73,6 +75,7 @@
 	</managerEvent>
 	<managerEvent language="en_US" name="AgentLogoff">
 		<managerEventInstance class="EVENT_FLAG_AGENT">
+			<since><version>12.0.0</version></since>
 			<synopsis>Raised when an Agent has logged off.</synopsis>
 			<syntax>
 				<xi:include xpointer="xpointer(/docs/managerEvent[@name='AgentLogin']/managerEventInstance/syntax/parameter)" />
@@ -87,6 +90,7 @@
 	</managerEvent>
 	<managerEvent language="en_US" name="ChannelTalkingStart">
 		<managerEventInstance class="EVENT_FLAG_CLASS">
+			<since><version>12.4.0</version></since>
 			<synopsis>Raised when talking is detected on a channel.</synopsis>
 			<syntax>
 				<channel_snapshot/>
@@ -99,6 +103,7 @@
 	</managerEvent>
 	<managerEvent language="en_US" name="ChannelTalkingStop">
 		<managerEventInstance class="EVENT_FLAG_CLASS">
+			<since><version>12.4.0</version></since>
 			<synopsis>Raised when talking is no longer detected on a channel.</synopsis>
 			<syntax>
 				<channel_snapshot/>
@@ -285,6 +290,7 @@ static struct ast_channel_snapshot_base *channel_snapshot_base_create(struct ast
 	ast_string_field_set(snapshot, userfield, ast_channel_userfield(chan));
 	ast_string_field_set(snapshot, uniqueid, ast_channel_uniqueid(chan));
 	ast_string_field_set(snapshot, language, ast_channel_language(chan));
+	ast_string_field_set(snapshot, tenantid, ast_channel_tenantid(chan));
 
 	snapshot->creationtime = ast_channel_creationtime(chan);
 	snapshot->tech_properties = ast_channel_tech(chan)->properties;
@@ -942,8 +948,8 @@ void ast_channel_publish_final_snapshot(struct ast_channel *chan)
 		return;
 	}
 
-	ao2_unlink(channel_cache, update->old_snapshot);
-	ao2_unlink(channel_cache_by_name, update->old_snapshot);
+	ao2_find(channel_cache, ast_channel_uniqueid(chan), OBJ_SEARCH_KEY | OBJ_UNLINK | OBJ_NODATA);
+	ao2_find(channel_cache_by_name, ast_channel_name(chan), OBJ_SEARCH_KEY | OBJ_UNLINK | OBJ_NODATA);
 
 	ast_channel_snapshot_set(chan, NULL);
 
@@ -1096,17 +1102,15 @@ void ast_channel_publish_snapshot(struct ast_channel *chan)
 	 * snapshot is not in the cache.
 	 */
 	ao2_wrlock(channel_cache);
-	if (update->old_snapshot) {
-		ao2_unlink_flags(channel_cache, update->old_snapshot, OBJ_NOLOCK);
-	}
+	ao2_find(channel_cache, ast_channel_uniqueid(chan), OBJ_SEARCH_KEY | OBJ_UNLINK | OBJ_NODATA | OBJ_NOLOCK);
+
 	ao2_link_flags(channel_cache, update->new_snapshot, OBJ_NOLOCK);
 	ao2_unlock(channel_cache);
 
 	/* The same applies here. */
 	ao2_wrlock(channel_cache_by_name);
-	if (update->old_snapshot) {
-		ao2_unlink_flags(channel_cache_by_name, update->old_snapshot, OBJ_NOLOCK);
-	}
+	ao2_find(channel_cache_by_name, ast_channel_name(chan), OBJ_SEARCH_KEY | OBJ_UNLINK | OBJ_NODATA | OBJ_NOLOCK);
+
 	ao2_link_flags(channel_cache_by_name, update->new_snapshot, OBJ_NOLOCK);
 	ao2_unlock(channel_cache_by_name);
 
@@ -1186,7 +1190,7 @@ void ast_channel_publish_varset(struct ast_channel *chan, const char *name, cons
 			value, strlen(value));
 
 		ast_log(LOG_WARNING, "%s: The contents of variable '%s' had invalid UTF-8 sequences which were replaced",
-			ast_channel_name(chan), name);
+			chan ? ast_channel_name(chan) : "GLOBAL", name);
 	}
 
 	blob = ast_json_pack("{s: s, s: s}",
@@ -1330,6 +1334,10 @@ struct ast_json *ast_channel_snapshot_to_json(
 	if (snapshot->ari_vars && !AST_LIST_EMPTY(snapshot->ari_vars)) {
 		ast_json_object_set(json_chan, "channelvars", ast_json_channel_vars(snapshot->ari_vars));
 	}
+
+        if (!ast_strlen_zero(snapshot->base->tenantid)) {
+                ast_json_object_set(json_chan, "tenantid", ast_json_string_create(snapshot->base->tenantid));
+        }
 
 	return json_chan;
 }

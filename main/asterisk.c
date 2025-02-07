@@ -1,7 +1,7 @@
 /*
  * Asterisk -- An open source telephony toolkit.
  *
- * Copyright (C) 1999 - 2018, Digium, Inc.
+ * Copyright (C) 1999 - 2025, Sangoma Technologies Corporation
  *
  * Mark Spencer <markster@digium.com>
  *
@@ -53,7 +53,7 @@
  *
  * \section copyright Copyright and Author
  *
- * Copyright (C) 1999 - 2021, Sangoma Technologies Corporation.
+ * Copyright (C) 1999 - 2025, Sangoma Technologies Corporation.
  * Asterisk is a <a href="https://cdn.sangoma.com/wp-content/uploads/Sangoma-Trademark-Policy.pdf">registered trademark</a>
  * of <a rel="nofollow" href="http://www.sangoma.com">Sangoma Technologies Corporation</a>.
  *
@@ -249,6 +249,7 @@ int daemon(int, int);  /* defined in libresolv of all places */
 /*** DOCUMENTATION
 	<managerEvent language="en_US" name="FullyBooted">
 		<managerEventInstance class="EVENT_FLAG_SYSTEM">
+			<since><version>12.0.0</version></since>
 			<synopsis>Raised when all Asterisk initialization procedures have finished.</synopsis>
 			<syntax>
 				<parameter name="Status">
@@ -265,6 +266,7 @@ int daemon(int, int);  /* defined in libresolv of all places */
 	</managerEvent>
 	<managerEvent language="en_US" name="Shutdown">
 		<managerEventInstance class="EVENT_FLAG_SYSTEM">
+			<since><version>12.0.0</version></since>
 			<synopsis>Raised when Asterisk is shutdown or restarted.</synopsis>
 			<syntax>
 				<parameter name="Shutdown">
@@ -297,7 +299,7 @@ int daemon(int, int);  /* defined in libresolv of all places */
 #define NUM_MSGS 64
 
 /*! Displayed copyright tag */
-#define COPYRIGHT_TAG "Copyright (C) 1999 - 2022, Sangoma Technologies Corporation and others."
+#define COPYRIGHT_TAG "Copyright (C) 1999 - 2025, Sangoma Technologies Corporation and others."
 
 /*! \brief Welcome message when starting a CLI interface */
 #define WELCOME_MESSAGE \
@@ -596,6 +598,7 @@ static char *handle_show_settings(struct ast_cli_entry *e, int cmd, struct ast_c
 	ast_cli(a->fd, "  ASTDB:                       %s\n", ast_config_AST_DB);
 	ast_cli(a->fd, "  IAX2 Keys directory:         %s\n", ast_config_AST_KEY_DIR);
 	ast_cli(a->fd, "  AGI Scripts directory:       %s\n", ast_config_AST_AGI_DIR);
+	ast_cli(a->fd, "  Cache directory:             %s\n", ast_config_AST_CACHE_DIR);
 	ast_cli(a->fd, "\n\n");
 	return CLI_SUCCESS;
 }
@@ -1117,6 +1120,10 @@ void ast_unreplace_sigchld(void)
 	unsigned int level;
 
 	ast_mutex_lock(&safe_system_lock);
+
+	/* Wrapping around here is an error */
+	ast_assert(safe_system_level > 0);
+
 	level = --safe_system_level;
 
 	/* only restore the handler if we are the last one */
@@ -2050,7 +2057,7 @@ static void really_quit(int num, shutdown_nice_t niceness, int restart)
 		run_cleanups = 0;
 	}
 
-	if (!restart) {
+	if (!restart && !ast_opt_remote) {
 		ast_sd_notify("STOPPING=1");
 	}
 	if (ast_opt_console || (ast_opt_remote && !ast_opt_exec)) {
@@ -2164,7 +2171,19 @@ static void set_header(char *outbuf, int maxout, char level)
 		break;
 	case 3: cmp = VERBOSE_PREFIX_3;
 		break;
-	default: cmp = VERBOSE_PREFIX_4;
+	case 4: cmp = VERBOSE_PREFIX_4;
+		break;
+	case 5: cmp = VERBOSE_PREFIX_5;
+		break;
+	case 6: cmp = VERBOSE_PREFIX_6;
+		break;
+	case 7: cmp = VERBOSE_PREFIX_7;
+		break;
+	case 8: cmp = VERBOSE_PREFIX_8;
+		break;
+	case 9: cmp = VERBOSE_PREFIX_9;
+		break;
+	default: cmp = VERBOSE_PREFIX_10;
 		break;
 	}
 
@@ -3170,7 +3189,12 @@ static int ast_el_read_history(const char *filename)
 		ast_el_initialize();
 	}
 
-	return history(el_hist, &ev, H_LOAD, filename);
+	if (access(filename, F_OK) == 0) {
+		return history(el_hist, &ev, H_LOAD, filename);
+	}
+
+	/* If the history file doesn't exist, failing to read it is unremarkable. */
+	return 0;
 }
 
 static void process_histfile(int (*readwrite)(const char *filename))
@@ -4322,7 +4346,7 @@ static void asterisk_daemon(int isroot, const char *runuser, const char *rungrou
 	if (ast_opt_console) {
 		/* Console stuff now... */
 		/* Register our quit function */
-		char title[256];
+		char title[296];
 		char hostname[MAXHOSTNAMELEN] = "";
 
 		if (gethostname(hostname, sizeof(hostname) - 1)) {

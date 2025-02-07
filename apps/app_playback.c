@@ -43,6 +43,7 @@
 
 /*** DOCUMENTATION
 	<application name="Playback" language="en_US">
+		<since><version>1.6.2.0</version></since>
 		<synopsis>
 			Play a file.
 		</synopsis>
@@ -94,7 +95,7 @@
 			<para>WaitExten (application) -- wait for digits from caller, optionally play music on hold</para>
 		</description>
 		<see-also>
-			<ref type="application">Background</ref>
+			<ref type="application">BackGround</ref>
 			<ref type="application">WaitExten</ref>
 			<ref type="application">ControlPlayback</ref>
 			<ref type="agi">stream file</ref>

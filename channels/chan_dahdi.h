@@ -440,6 +440,8 @@ struct dahdi_pvt {
 	 * \note Used by SS7.  Otherwise set but not used.
 	 */
 	unsigned int inservice:1;
+	/*! *\brief TRUE if last number redial enabled */
+	unsigned int lastnumredial:1;
 	/*!
 	 * \brief Bitmask for the channel being locally blocked.
 	 * \note Applies to SS7 and MFCR2 channels.
@@ -654,6 +656,14 @@ struct dahdi_pvt {
 	 * \note Set from the "waitfordialtone" value read in from chan_dahdi.conf
 	 */
 	int waitfordialtone;
+	/*!
+	 * \brief Transient variable. Same as waitfordialtone, but temporarily set for a specific call, rather than permanently for the channel.
+	 */
+	int waitfordialtonetemp;
+	/*!
+	 * \brief Transient variable. Stored off waitfordialtone duration at runtime.
+	 */
+	int waitfordialtoneduration;
 	/*!
 	 * \brief Number of frames to watch for dialtone in incoming calls
 	 * \note Set from the "dialtone_detect" value read in from chan_dahdi.conf

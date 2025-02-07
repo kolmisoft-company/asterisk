@@ -71,9 +71,6 @@
 #include "asterisk/backtrace.h"
 #include "asterisk/json.h"
 
-/*** DOCUMENTATION
- ***/
-
 static int logger_register_level(const char *name);
 static int logger_unregister_level(const char *name);
 static int logger_get_dynamic_level(const char *name);
@@ -287,7 +284,7 @@ static int format_log_json(struct logchannel *channel, struct logmsg *msg, char 
 	}
 
 	json = ast_json_pack("{s: s, s: s, "
-		"s: {s: i, s: s} "
+		"s: {s: i, s: s}, "
 		"s: {s: {s: s, s: s, s: i}, "
 		"s: s, s: s} }",
 		"hostname", ast_config_AST_SYSTEM_NAME,
@@ -342,7 +339,19 @@ static int logger_add_verbose_magic(struct logmsg *logmsg, char *buf, size_t siz
 
 	/* For compatibility with modules still calling ast_verbose() directly instead of using ast_verb() */
 	if (logmsg->sublevel < 0) {
-		if (!strncmp(logmsg->message, VERBOSE_PREFIX_4, strlen(VERBOSE_PREFIX_4))) {
+		if (!strncmp(logmsg->message, VERBOSE_PREFIX_10, strlen(VERBOSE_PREFIX_10))) {
+			magic = -11;
+		} else if (!strncmp(logmsg->message, VERBOSE_PREFIX_9, strlen(VERBOSE_PREFIX_9))) {
+			magic = -10;
+		} else if (!strncmp(logmsg->message, VERBOSE_PREFIX_8, strlen(VERBOSE_PREFIX_8))) {
+			magic = -9;
+		} else if (!strncmp(logmsg->message, VERBOSE_PREFIX_7, strlen(VERBOSE_PREFIX_7))) {
+			magic = -8;
+		} else if (!strncmp(logmsg->message, VERBOSE_PREFIX_6, strlen(VERBOSE_PREFIX_6))) {
+			magic = -7;
+		} else if (!strncmp(logmsg->message, VERBOSE_PREFIX_5, strlen(VERBOSE_PREFIX_5))) {
+			magic = -6;
+		} else if (!strncmp(logmsg->message, VERBOSE_PREFIX_4, strlen(VERBOSE_PREFIX_4))) {
 			magic = -5;
 		} else if (!strncmp(logmsg->message, VERBOSE_PREFIX_3, strlen(VERBOSE_PREFIX_3))) {
 			magic = -4;
@@ -1227,18 +1236,6 @@ static int reload_logger(int rotate, const char *altconf)
 	AST_RWLIST_TRAVERSE(&logchannels, f, list) {
 		if (f->disabled) {
 			f->disabled = 0;	/* Re-enable logging at reload */
-			/*** DOCUMENTATION
-				<managerEvent language="en_US" name="LogChannel">
-					<managerEventInstance class="EVENT_FLAG_SYSTEM">
-						<synopsis>Raised when a logging channel is re-enabled after a reload operation.</synopsis>
-						<syntax>
-							<parameter name="Channel">
-								<para>The name of the logging channel.</para>
-							</parameter>
-						</syntax>
-					</managerEventInstance>
-				</managerEvent>
-			***/
 			manager_event(EVENT_FLAG_SYSTEM, "LogChannel", "Channel: %s\r\nEnabled: Yes\r\n", f->filename);
 		}
 		if (f->fileptr && (f->fileptr != stdout) && (f->fileptr != stderr)) {
@@ -1971,16 +1968,6 @@ static void logger_print_normal(struct logmsg *logmsg)
 							fprintf(stderr, "Logger Warning: Unable to write to log file '%s': %s (disabled)\n", chan->filename, strerror(errno));
 						}
 
-						/*** DOCUMENTATION
-							<managerEventInstance>
-								<synopsis>Raised when a logging channel is disabled.</synopsis>
-								<syntax>
-									<parameter name="Channel">
-										<para>The name of the logging channel.</para>
-									</parameter>
-								</syntax>
-							</managerEventInstance>
-						***/
 						manager_event(EVENT_FLAG_SYSTEM, "LogChannel", "Channel: %s\r\nEnabled: No\r\nReason: %d - %s\r\n", chan->filename, errno, strerror(errno));
 						chan->disabled = 1;
 					}

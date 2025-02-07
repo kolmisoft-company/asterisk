@@ -70,6 +70,7 @@
  */
 /*** DOCUMENTATION
 	<function name="CALLERID" language="en_US">
+		<since><version>1.6.2.0</version></since>
 		<synopsis>
 			Gets or sets Caller*ID data on the channel.
 		</synopsis>
@@ -192,6 +193,8 @@
 					You are responsible for setting it if/when needed.</para>
 					<para>Supporting Caller ID units will display the LDC
 					(Long Distance Call) indicator when they receive this parameter.</para>
+					<para>For incoming calls on FXO ports, if the Call Qualifier parameter is received,
+					this variable will also be set to 1.</para>
 					<para>This option must be used with a channel driver
 					that allows Asterisk to generate the Caller ID spill,
 					which currently only includes <literal>chan_dahdi</literal>.</para>
@@ -200,6 +203,7 @@
 		</description>
 	</function>
 	<function name="CONNECTEDLINE" language="en_US">
+		<since><version>1.8.0</version></since>
 		<synopsis>
 			Gets or sets Connected Line data on the channel.
 		</synopsis>
@@ -297,6 +301,7 @@
 		</description>
 	</function>
 	<function name="REDIRECTING" language="en_US">
+		<since><version>1.8.0</version></since>
 		<synopsis>
 			Gets or sets Redirecting data on the channel.
 		</synopsis>
@@ -1716,6 +1721,7 @@ static int redirecting_write(struct ast_channel *chan, const char *cmd, char *da
 			 * reason, so we can just set the reason string to what was given and set the
 			 * code to be unknown
 			 */
+			ast_log(LOG_WARNING, "Unknown redirecting reason '%s', defaulting to unknown\n", val);
 			redirecting.reason.code = AST_REDIRECTING_REASON_UNKNOWN;
 			redirecting.reason.str = val;
 			set_it(chan, &redirecting, NULL);

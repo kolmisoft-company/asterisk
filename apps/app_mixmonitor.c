@@ -63,6 +63,7 @@
 
 /*** DOCUMENTATION
 	<application name="MixMonitor" language="en_US">
+		<since><version>1.6.2.0</version></since>
 		<synopsis>
 			Record a call and mix the audio during the recording.  Use of StopMixMonitor is required
 			to guarantee the audio file is available for processing during dialplan execution.
@@ -127,6 +128,11 @@
 						Like with the basic filename argument, if an absolute path isn't given, it will create
 						the file in the configured monitoring directory.</para>
 					</option>
+					<option name="D">
+						<para>Interleave the audio coming from the channel and the audio coming to the channel in
+						the output audio as a dual channel stream, rather than mix it.</para>
+						<note><para>Use .raw as the extension.</para></note>
+					</option>
 					<option name="n">
 						<para>When the <replaceable>r</replaceable> or <replaceable>t</replaceable> option is
 						used, MixMonitor will insert silence into the specified files to maintain
@@ -187,10 +193,10 @@
 			<ref type="application">StopMixMonitor</ref>
 			<ref type="application">PauseMonitor</ref>
 			<ref type="application">UnpauseMonitor</ref>
-			<ref type="function">AUDIOHOOK_INHERIT</ref>
 		</see-also>
 	</application>
 	<application name="StopMixMonitor" language="en_US">
+		<since><version>1.6.2.0</version></since>
 		<synopsis>
 			Stop recording a call through MixMonitor, and free the recording's file handle.
 		</synopsis>
@@ -209,6 +215,9 @@
 		</see-also>
 	</application>
 	<manager name="MixMonitorMute" language="en_US">
+		<since>
+			<version>1.8.0</version>
+		</since>
 		<synopsis>
 			Mute / unMute a Mixmonitor recording.
 		</synopsis>
@@ -229,6 +238,9 @@
 		</description>
 	</manager>
 	<manager name="MixMonitor" language="en_US">
+		<since>
+			<version>11.0.0</version>
+		</since>
 		<synopsis>
 			Record a call and mix the audio during the recording.  Use of StopMixMonitor is required
 			to guarantee the audio file is available for processing during dialplan execution.
@@ -272,6 +284,9 @@
 		</description>
 	</manager>
 	<manager name="StopMixMonitor" language="en_US">
+		<since>
+			<version>11.0.0</version>
+		</since>
 		<synopsis>
 			Stop recording a call through MixMonitor, and free the recording's file handle.
 		</synopsis>
@@ -291,6 +306,7 @@
 		</description>
 	</manager>
 	<function name="MIXMONITOR" language="en_US">
+		<since><version>13.0.0</version></since>
 		<synopsis>
 			Retrieve data pertaining to specific instances of MixMonitor on a channel.
 		</synopsis>
@@ -309,6 +325,7 @@
 	</function>
 	<managerEvent language="en_US" name="MixMonitorStart">
 		<managerEventInstance class="EVENT_FLAG_CALL">
+			<since><version>16.17.0</version><version>18.3.0</version></since>
 			<synopsis>Raised when monitoring has started on a channel.</synopsis>
 			<syntax>
 				<channel_snapshot/>
@@ -322,6 +339,7 @@
 	</managerEvent>
 	<managerEvent language="en_US" name="MixMonitorStop">
 		<managerEventInstance class="EVENT_FLAG_CALL">
+			<since><version>16.17.0</version><version>18.3.0</version></since>
 		<synopsis>Raised when monitoring has stopped on a channel.</synopsis>
 		<syntax>
 			<channel_snapshot/>
@@ -335,6 +353,7 @@
 	</managerEvent>
 	<managerEvent language="en_US" name="MixMonitorMute">
 		<managerEventInstance class="EVENT_FLAG_CALL">
+			<since><version>16.17.0</version><version>18.3.0</version></since>
 		<synopsis>Raised when monitoring is muted or unmuted on a channel.</synopsis>
 		<syntax>
 			<channel_snapshot/>
@@ -419,6 +438,7 @@ enum mixmonitor_flags {
 	MUXFLAG_NO_RWSYNC = (1 << 15),
 	MUXFLAG_AUTO_DELETE = (1 << 16),
 	MUXFLAG_REAL_CALLERID = (1 << 17),
+	MUXFLAG_INTERLEAVED = (1 << 18),
 };
 
 enum mixmonitor_args {
@@ -448,6 +468,7 @@ AST_APP_OPTIONS(mixmonitor_opts, {
 	AST_APP_OPTION_ARG('W', MUXFLAG_VOLUME, OPT_ARG_VOLUME),
 	AST_APP_OPTION_ARG('r', MUXFLAG_READ, OPT_ARG_READNAME),
 	AST_APP_OPTION_ARG('t', MUXFLAG_WRITE, OPT_ARG_WRITENAME),
+	AST_APP_OPTION('D', MUXFLAG_INTERLEAVED),
 	AST_APP_OPTION_ARG('i', MUXFLAG_UID, OPT_ARG_UID),
 	AST_APP_OPTION_ARG('m', MUXFLAG_VMRECIPIENTS, OPT_ARG_VMRECIPIENTS),
 	AST_APP_OPTION_ARG('S', MUXFLAG_DEPRECATED_RWSYNC, OPT_ARG_DEPRECATED_RWSYNC),
@@ -796,6 +817,46 @@ static void *mixmonitor_thread(void *obj)
 				for (cur = fr_write; cur; cur = AST_LIST_NEXT(cur, frame_list)) {
 					ast_writestream(*fs_write, cur);
 				}
+			}
+
+			if (ast_test_flag(mixmonitor, MUXFLAG_INTERLEAVED)) {
+				/* The 'D' option is set, so mix the frame as an interleaved dual channel frame */
+				int i;
+				short read_buf[SAMPLES_PER_FRAME];
+				short write_buf[SAMPLES_PER_FRAME];
+				short stereo_buf[SAMPLES_PER_FRAME * 2];
+				struct ast_frame stereo_frame = {
+					.frametype = AST_FRAME_VOICE,
+					.datalen = sizeof(stereo_buf),
+					.samples = SAMPLES_PER_FRAME,
+				};
+
+				if (fr) {
+					ast_frame_free(fr, 0);
+					fr = NULL;
+				}
+
+				if (fr_read) {
+					memcpy(read_buf, fr_read->data.ptr, sizeof(read_buf));
+				} else {
+					memset(read_buf, 0, sizeof(read_buf));
+				}
+
+				if (fr_write) {
+					memcpy(write_buf, fr_write->data.ptr, sizeof(write_buf));
+				} else {
+					memset(write_buf, 0, sizeof(write_buf));
+				}
+
+				for (i = 0; i < SAMPLES_PER_FRAME; i++) {
+					stereo_buf[i * 2] = read_buf[i];
+					stereo_buf[i * 2 + 1] = write_buf[i];
+				}
+
+				stereo_frame.data.ptr = stereo_buf;
+				stereo_frame.subclass.format = ast_format_cache_get_slin_by_rate(SAMPLES_PER_FRAME);
+
+				fr = ast_frdup(&stereo_frame);
 			}
 
 			if ((*fs) && (fr)) {

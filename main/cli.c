@@ -807,30 +807,35 @@ static char *handle_logger_mute(struct ast_cli_entry *e, int cmd, struct ast_cli
 
 static char *handle_refresh(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
 {
+	static const char * const completions[] = { "recursively", NULL };
+	int res;
 	/* "module refresh <mod>" */
 	switch (cmd) {
 	case CLI_INIT:
 		e->command = "module refresh";
 		e->usage =
-			"Usage: module refresh <module name>\n"
-			"       Unloads and loads the specified module into Asterisk.\n";
+			"Usage: module refresh <module name> [recursively]\n"
+			"       Unloads and loads the specified module into Asterisk.\n"
+			"       'recursively' will attempt to unload any modules with\n"
+			"       dependencies on this module for you and load them again\n"
+			"       afterwards.\n";
 		return NULL;
 
 	case CLI_GENERATE:
-		if (a->pos != e->args) {
-			return NULL;
+		if (a->pos == e->args) {
+			return ast_module_helper(a->line, a->word, a->pos, a->n, a->pos, AST_MODULE_HELPER_UNLOAD);
+		} else if (a->pos == e->args + 1) {
+			return ast_cli_complete(a->word, completions, a->n);
 		}
-		return ast_module_helper(a->line, a->word, a->pos, a->n, a->pos, AST_MODULE_HELPER_UNLOAD);
+		return NULL;
 	}
-	if (a->argc != e->args + 1) {
+	if (a->argc < 3 || a->argc > 4) {
 		return CLI_SHOWUSAGE;
 	}
-	if (ast_unload_resource(a->argv[e->args], AST_FORCE_SOFT)) {
-		ast_cli(a->fd, "Unable to unload resource %s\n", a->argv[e->args]);
-		return CLI_FAILURE;
-	}
-	if (ast_load_resource(a->argv[e->args])) {
-		ast_cli(a->fd, "Unable to load module %s\n", a->argv[e->args]);
+
+	res = ast_refresh_resource(a->argv[e->args], AST_FORCE_SOFT, a->argc == 4 && !strcasecmp(a->argv[3], "recursively"));
+	if (res) {
+		ast_cli(a->fd, "Unable to %s resource %s\n", res > 0 ? "unload" : "load", a->argv[e->args]);
 		return CLI_FAILURE;
 	}
 	ast_cli(a->fd, "Unloaded and loaded %s\n", a->argv[e->args]);
@@ -1118,9 +1123,7 @@ static char *handle_chanlist(struct ast_cli_entry *e, int cmd, struct ast_cli_ar
 			"       'concise' is specified, the format is abridged and in a more easily\n"
 			"       machine parsable format. If 'verbose' is specified, the output includes\n"
 			"       more and longer fields. If 'count' is specified only the channel and call\n"
-			"       count is output.\n"
-			"	The 'concise' option is deprecated and will be removed from future versions\n"
-			"	of Asterisk.\n";
+			"       count is output.\n";
 		return NULL;
 
 	case CLI_GENERATE:
@@ -1656,6 +1659,7 @@ static char *handle_showchan(struct ast_cli_entry *e, int cmd, struct ast_cli_ar
 	ast_callid callid;
 	char callid_buf[32];
 	int stream_num;
+	RAII_VAR(char *, tenant_id, NULL, ast_free);
 
 	switch (cmd) {
 	case CLI_INIT:
@@ -1714,12 +1718,17 @@ static char *handle_showchan(struct ast_cli_entry *e, int cmd, struct ast_cli_ar
 		ast_callid_strnprint(callid_buf, sizeof(callid_buf), callid);
 	}
 
+	if (!ast_strlen_zero(ast_channel_tenantid(chan))) {
+		ast_asprintf(&tenant_id, "       TenantID: %s\n", ast_channel_tenantid(chan));
+	}
+
 	ast_str_append(&output, 0,
 		" -- General --\n"
 		"           Name: %s\n"
 		"           Type: %s\n"
 		"       UniqueID: %s\n"
 		"       LinkedID: %s\n"
+		"%s"
 		"      Caller ID: %s\n"
 		" Caller ID Name: %s\n"
 		"Connected Line ID: %s\n"
@@ -1750,6 +1759,7 @@ static char *handle_showchan(struct ast_cli_entry *e, int cmd, struct ast_cli_ar
 		ast_channel_tech(chan)->type,
 		ast_channel_uniqueid(chan),
 		ast_channel_linkedid(chan),
+		!ast_strlen_zero(tenant_id) ? tenant_id : "",
 		S_COR(ast_channel_caller(chan)->id.number.valid,
 		      ast_channel_caller(chan)->id.number.str, "(N/A)"),
 		S_COR(ast_channel_caller(chan)->id.name.valid,
