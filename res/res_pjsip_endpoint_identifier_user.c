@@ -139,6 +139,11 @@ static struct ast_sip_endpoint *username_identify(pjsip_rx_data *rdata)
 		return NULL;
 	}
 
+	/* Skip anonymous users */
+	if (strcmp(username, "anonymous") == 0) {
+		return NULL;
+	}
+
 	/*
 	 * We may want to be matched without any user options getting
 	 * in the way.
@@ -170,8 +175,14 @@ static struct ast_sip_endpoint *auth_username_identify(pjsip_rx_data *rdata)
 
 	while ((auth_header = get_auth_header(rdata, username, sizeof(username), realm, sizeof(realm),
 		auth_header ? auth_header->next : NULL))) {
+		/* Skip anonymous users */
+		if (strcmp(username, "anonymous") == 0) {
+			continue;
+		}
+
 		ast_debug(3, "Attempting identify by Authorization username '%s' realm '%s'\n", username,
 			realm);
+
 
 		endpoint = find_endpoint(rdata, username, realm);
 		if (!endpoint) {
