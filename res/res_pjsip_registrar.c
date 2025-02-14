@@ -1194,8 +1194,11 @@ static pj_bool_t registrar_on_rx_request(struct pjsip_rx_data *rdata)
 		/* Short circuit early if the endpoint has no AORs configured on it, which means no registration possible */
 		pjsip_endpt_respond_stateless(ast_sip_get_pjsip_endpoint(), rdata, 403, NULL, NULL, NULL);
 		ast_sip_report_failed_acl(endpoint, rdata, "registrar_attempt_without_configured_aors");
-		ast_log(LOG_WARNING, "Endpoint '%s' (%s:%d) has no configured AORs\n", ast_sorcery_object_get_id(endpoint),
-			rdata->pkt_info.src_name, rdata->pkt_info.src_port);
+
+		if (strcmp(ast_sorcery_object_get_id(endpoint), "anonymous") != 0) {
+			ast_log(LOG_WARNING, "Endpoint '%s' (%s:%d) has no configured AORs\n", ast_sorcery_object_get_id(endpoint),
+				rdata->pkt_info.src_name, rdata->pkt_info.src_port);
+		}
 		return PJ_TRUE;
 	}
 
