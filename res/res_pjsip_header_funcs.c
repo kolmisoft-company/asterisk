@@ -40,7 +40,9 @@
 
 /*** DOCUMENTATION
 	<function name="PJSIP_HEADER" language="en_US">
-		<since><version>12.0.0</version></since>
+		<since>
+			<version>12.0.0</version>
+		</since>
 		<synopsis>
 			Gets headers from an inbound PJSIP channel. Adds, updates or removes the
 			specified SIP header from an outbound PJSIP channel.
@@ -207,7 +209,11 @@
 		</see-also>
 	</function>
 	<function name="PJSIP_RESPONSE_HEADER" language="en_US">
-		<since><version>16.28.0</version><version>18.14.0</version><version>19.6.0</version></since>
+		<since>
+			<version>16.28.0</version>
+			<version>18.14.0</version>
+			<version>19.6.0</version>
+		</since>
 		<synopsis>
 			Gets headers of 200 response from an outbound PJSIP channel.
 		</synopsis>
@@ -268,7 +274,11 @@
 		</see-also>
 	</function>
 	<function name="PJSIP_RESPONSE_HEADERS" language="en_US">
-		<since><version>16.28.0</version><version>18.14.0</version><version>19.6.0</version></since>
+		<since>
+			<version>16.28.0</version>
+			<version>18.14.0</version>
+			<version>19.6.0</version>
+		</since>
 		<synopsis>
 			Gets the list of SIP header names from the 200 response of INVITE message.
 		</synopsis>
@@ -292,7 +302,10 @@
 		</see-also>
 	</function>
 	<function name="PJSIP_HEADER_PARAM" language="en_US">
-		<since><version>18.16.0</version><version>20.1.0</version></since>
+		<since>
+			<version>18.16.0</version>
+			<version>20.1.0</version>
+		</since>
 		<synopsis>
 			Get or set header/URI parameters on a PJSIP channel.
 		</synopsis>
