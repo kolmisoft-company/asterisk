@@ -3576,6 +3576,14 @@ void ast_sip_get_default_auth_algorithms_uas(char *default_auth_algorithms_uas, 
 void ast_sip_get_default_auth_algorithms_uac(char *default_auth_algorithms_uac, size_t size);
 
 /*!
+ * \brief Retrieve the RTP bind address when transport is set to auto (undefined).
+ *
+ * \param[out] auto_rtp_bind_address The auto RTP bind address
+ * \param size The buffer size of auto_rtp_bind_address
+ */
+void ast_sip_get_auto_rtp_bind_address(char *auto_rtp_bind_address, size_t size);
+
+/*!
  * \brief Retrieve the global default from user.
  *
  * This is the value placed in outbound requests' From header if there
@@ -3685,7 +3693,7 @@ struct ast_sip_transport_state *ast_sip_get_transport_state(const char *transpor
 
 /*!
  * \brief Return the SIP URI of the Contact header
- * 
+ *
  * \param tdata
  * \retval Pointer to SIP URI of Contact
  * \retval NULL if Contact header not found or not a SIP(S) URI

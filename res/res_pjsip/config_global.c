@@ -89,6 +89,8 @@ struct global_config {
 		AST_STRING_FIELD(default_auth_algorithms_uas);
 		/*! Default authentication algorithms for UAC */
 		AST_STRING_FIELD(default_auth_algorithms_uac);
+		/*! RTP bind address when transport is set to auto */
+		AST_STRING_FIELD(auto_rtp_bind_address);
 	);
 	/*! Value to put in Max-Forwards header */
 	unsigned int max_forwards;
@@ -440,6 +442,19 @@ void ast_sip_get_default_auth_algorithms_uac(char *default_auth_algorithms_uac, 
 		ast_copy_string(default_auth_algorithms_uac, DEFAULT_AUTH_ALGORITHMS_UAC, size);
 	} else {
 		ast_copy_string(default_auth_algorithms_uac, cfg->default_auth_algorithms_uac, size);
+		ao2_ref(cfg, -1);
+	}
+}
+
+void ast_sip_get_auto_rtp_bind_address(char *auto_rtp_bind_address, size_t size)
+{
+	struct global_config *cfg;
+
+	cfg = get_global_cfg();
+	if (!cfg) {
+		ast_copy_string(auto_rtp_bind_address, "", size);
+	} else {
+		ast_copy_string(auto_rtp_bind_address, cfg->auto_rtp_bind_address, size);
 		ao2_ref(cfg, -1);
 	}
 }
@@ -824,6 +839,9 @@ int ast_sip_initialize_sorcery_global(void)
 	ast_sorcery_object_field_register(sorcery, "global", "default_auth_algorithms_uac",
 		DEFAULT_AUTH_ALGORITHMS_UAC, OPT_STRINGFIELD_T, 0,
 		STRFLDSET(struct global_config, default_auth_algorithms_uac));
+	ast_sorcery_object_field_register(sorcery, "global", "auto_rtp_bind_address",
+		"", OPT_STRINGFIELD_T, 0,
+		STRFLDSET(struct global_config, auto_rtp_bind_address));
 
 	if (ast_sorcery_instance_observer_add(sorcery, &observer_callbacks_global)) {
 		return -1;

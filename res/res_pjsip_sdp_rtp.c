@@ -264,6 +264,18 @@ static int create_rtp(struct ast_sip_session *session, struct ast_sip_session_me
 				ao2_ref(trans_state, -1);
 			}
 			ao2_ref(transport, -1);
+		} else {
+			char auto_rtp_bind_address[100] = "";
+			ast_sip_get_auto_rtp_bind_address(auto_rtp_bind_address, sizeof(auto_rtp_bind_address));
+
+			if (!ast_strlen_zero(auto_rtp_bind_address)) {
+				if (ast_sockaddr_parse(&temp_media_address, auto_rtp_bind_address, 0)) {
+					ast_debug_rtp(1, "Transport 'auto' binding RTP media to %s\n", auto_rtp_bind_address);
+					media_address = &temp_media_address;
+				} else {
+					ast_debug_rtp(1, "Transport 'auto' RTP media address invalid: %s\n", auto_rtp_bind_address);
+				}
+			}
 		}
 	}
 
