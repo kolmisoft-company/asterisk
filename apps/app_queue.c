@@ -177,7 +177,7 @@
 						to the specified destination and <emphasis>start</emphasis> execution at that location.</para>
 						<para>NOTE: Any channel variables you want the called channel to inherit from the caller channel must be
 						prefixed with one or two underbars ('_').</para>
-						<para>NOTE: Using this option from a Macro() or GoSub() might not make sense as there would be no return points.</para>
+						<para>NOTE: Using this option from a Macro() or Gosub() might not make sense as there would be no return points.</para>
 					</option>
 					<option name="h">
 						<para>Allow <emphasis>callee</emphasis> to hang up by pressing <literal>*</literal>.</para>
@@ -289,7 +289,7 @@
 			up by another user.</para>
 			<para>This application will return to the dialplan if the queue does not exist, or
 			any of the join options cause the caller to not enter the queue.</para>
-			<para>This application does not automatically answer and should be preceeded
+			<para>This application does not automatically answer and should be preceded
 			by an application such as Answer(), Progress(), or Ringing().</para>
 			<para>This application sets the following channel variables upon completion:</para>
 			<variablelist>
@@ -600,7 +600,7 @@
 			<parameter name="queuename" required="true">
 				<enumlist>
 					<enum name="QUEUEMAX">
-						<para>Maxmimum number of calls allowed.</para>
+						<para>Maximum number of calls allowed.</para>
 					</enum>
 					<enum name="QUEUESTRATEGY">
 						<para>The strategy of the queue.</para>
@@ -1798,6 +1798,12 @@ static int log_membername_as_agent;
 /*! \brief queues.conf [general] option */
 static int force_longest_waiting_caller;
 
+/*! \brief queues.conf [general] option */
+static int log_caller_id_name; 
+
+/*! \brief queues.conf [general] option */
+static int log_unpause_on_reason_change;
+
 /*! \brief name of the ringinuse field in the realtime database */
 static char *realtime_ringinuse_field;
 
@@ -1892,6 +1898,7 @@ struct queue_ent {
 	int max_penalty;                       /*!< Limit the members that can take this call to this penalty or lower */
 	int min_penalty;                       /*!< Limit the members that can take this call to this penalty or higher */
 	int raise_penalty;                     /*!< Float lower penalty members to a minimum penalty */
+	int raise_respect_min;                 /*!< A switch raise_penalty should respect min_penalty not just max_penalty */
 	int linpos;                            /*!< If using linear strategy, what position are we at? */
 	int linwrapped;                        /*!< Is the linpos wrapped? */
 	time_t start;                          /*!< When we started holding */
@@ -1962,6 +1969,7 @@ struct penalty_rule {
 	int max_relative;                   /*!< Is the max adjustment relative? 1 for relative, 0 for absolute */
 	int min_relative;                   /*!< Is the min adjustment relative? 1 for relative, 0 for absolute */
 	int raise_relative;                   /*!< Is the min adjustment relative? 1 for relative, 0 for absolute */
+	int raise_respect_min;                 /*!< A switch raise_penalty should respect min_penalty not just max_penalty */
 	AST_LIST_ENTRY(penalty_rule) list;  /*!< Next penalty_rule */
 };
 
@@ -2039,7 +2047,7 @@ struct call_queue {
 	int periodicannouncestartdelay;     /*!< How long into the queue should the periodic accouncement start */
 	int periodicannouncefrequency;      /*!< How often to play periodic announcement */
 	int numperiodicannounce;            /*!< The number of periodic announcements configured */
-	int randomperiodicannounce;         /*!< Are periodic announcments randomly chosen */
+	int randomperiodicannounce;         /*!< Are periodic announcements randomly chosen */
 	int roundingseconds;                /*!< How many seconds do we round to? */
 	int holdtime;                       /*!< Current avg holdtime, based on an exponential average */
 	int talktime;                       /*!< Current avg talktime, based on the same exponential average */
@@ -2604,7 +2612,7 @@ static struct ast_json *queue_member_blob_create(struct call_queue *q, struct me
  * is available, the function immediately returns 0. If no members are available,
  * then -1 is returned.
  */
-static int get_member_status(struct call_queue *q, int max_penalty, int min_penalty, int raise_penalty, enum empty_conditions conditions, int devstate)
+static int get_member_status(struct call_queue *q, int max_penalty, int min_penalty, int raise_penalty, enum empty_conditions conditions, int devstate, int raise_respect_min)
 {
 	struct member *member;
 	struct ao2_iterator mem_iter;
@@ -2614,8 +2622,13 @@ static int get_member_status(struct call_queue *q, int max_penalty, int min_pena
 	for (; (member = ao2_iterator_next(&mem_iter)); ao2_ref(member, -1)) {
 		int penalty = member->penalty;
 		if (raise_penalty != INT_MAX && penalty < raise_penalty) {
-			ast_debug(4, "%s is having his penalty raised up from %d to %d\n", member->membername, penalty, raise_penalty);
-			penalty = raise_penalty;
+			/* Check if we should respect minimum penalty threshold */
+			if (raise_respect_min && penalty < min_penalty) {
+				ast_debug(4, "%s penalty %d not raised (below min %d)\n", member->membername, penalty, min_penalty);
+			} else {
+				ast_debug(4, "%s is having his penalty raised up from %d to %d\n", member->membername, penalty, raise_penalty);
+				penalty = raise_penalty;
+			}
 		}
 		if ((max_penalty != INT_MAX && penalty > max_penalty) || (min_penalty != INT_MAX && penalty < min_penalty)) {
 			if (conditions & QUEUE_EMPTY_PENALTY) {
@@ -2682,7 +2695,7 @@ static int get_member_status(struct call_queue *q, int max_penalty, int min_pena
 
 	if (!devstate && (conditions & QUEUE_EMPTY_RINGING)) {
 		/* member state still may be RINGING due to lag in event message - check again with device state */
-		return get_member_status(q, max_penalty, min_penalty, raise_penalty, conditions, 1);
+		return get_member_status(q, max_penalty, min_penalty, raise_penalty, conditions, 1, raise_respect_min);
 	}
 	return -1;
 }
@@ -3323,6 +3336,11 @@ static int insert_penaltychange(const char *list_name, const char *content, cons
 	}
 
 	if (!ast_strlen_zero(raisestr)) {
+		rule->raise_respect_min = 0;  /* Initialize to 0 */
+		if (*raisestr == 'r') {
+			rule->raise_respect_min = 1;               /* Set the flag */
+			raisestr++;
+		}
 		if (*raisestr == '+' || *raisestr == '-') {
 			rule->raise_relative = 1;
 		}
@@ -3442,11 +3460,21 @@ static int load_realtime_rules(void)
 			}
 		}
 		if (!(raisestr = ast_variable_retrieve(cfg, rulecat, "raise_penalty")) ||
-			ast_strlen_zero(raisestr) || sscanf(raisestr, "%30d", &raise_penalty) != 1) {
+			ast_strlen_zero(raisestr) ) {
 			raise_penalty = 0;
 			raise_relative = 1;
 		} else {
+			if (*raisestr == 'r') {
+				new_penalty_rule->raise_respect_min = 1;
+				raisestr++;
+			} else {
+				new_penalty_rule->raise_respect_min = 0;
+			}
 			if (*raisestr == '+' || *raisestr == '-') {
+				raise_relative = 1;
+			} 
+			if (sscanf(raisestr, "%30d", &raise_penalty) != 1) {
+				raise_penalty = 0;
 				raise_relative = 1;
 			}
 		}
@@ -4265,7 +4293,7 @@ static int join_queue(char *queuename, struct queue_ent *qe, enum queue_result *
 	/* This is our one */
 	if (q->joinempty) {
 		int status = 0;
-		if ((status = get_member_status(q, qe->max_penalty, qe->min_penalty, qe->raise_penalty, q->joinempty, 0))) {
+		if ((status = get_member_status(q, qe->max_penalty, qe->min_penalty, qe->raise_penalty, q->joinempty, 0, qe->raise_respect_min))) {
 			*reason = QUEUE_JOINEMPTY;
 			ao2_unlock(q);
 			queue_t_unref(q, "Done with realtime queue");
@@ -4415,7 +4443,7 @@ static int say_position(struct queue_ent *qe, int ringing)
 	}
 
 	/* Only announce if the caller's queue position has improved since last time */
-	if (qe->parent->announceposition_only_up && qe->last_pos_said <= qe->pos) {
+	if (qe->parent->announceposition_only_up && qe->last_pos_said > 0 && qe->last_pos_said <= qe->pos) {
 		return 0;
 	}
 
@@ -6119,7 +6147,7 @@ static int wait_our_turn(struct queue_ent *qe, int ringing, enum queue_result *r
 		if (qe->parent->leavewhenempty) {
 			int status = 0;
 
-			if ((status = get_member_status(qe->parent, qe->max_penalty, qe->min_penalty, qe->raise_penalty, qe->parent->leavewhenempty, 0))) {
+			if ((status = get_member_status(qe->parent, qe->max_penalty, qe->min_penalty, qe->raise_penalty, qe->parent->leavewhenempty, 0, qe->raise_respect_min))) {
 				record_abandoned(qe);
 				*reason = QUEUE_LEAVEEMPTY;
 				ast_queue_log(qe->parent->name, ast_channel_uniqueid(qe->chan), "NONE", "EXITEMPTY", "%d|%d|%ld", qe->pos, qe->opos, (long) (time(NULL) - qe->start));
@@ -6761,7 +6789,15 @@ static void handle_local_optimization_begin(void *userdata, struct stasis_subscr
 	struct local_optimization *optimization;
 	unsigned int id;
 	SCOPED_AO2LOCK(lock, queue_data);
-
+	
+	if (!local_one || !local_two || !source) {
+		ast_debug(1, "Local optimization begin missing channel snapshots:%s%s%s\n",
+		!local_one ? " local_one," : "",
+		!local_two ? " local_two," : "", 
+		!source ? " source," : "");
+		return;
+	}
+	
 	if (queue_data->dying) {
 		return;
 	}
@@ -7002,7 +7038,7 @@ static int setup_stasis_subs(struct queue_ent *qe, struct ast_channel *peer, str
 			handle_blind_transfer, queue_data);
 	stasis_message_router_add(queue_data->bridge_router, ast_attended_transfer_type(),
 			handle_attended_transfer, queue_data);
-	stasis_message_router_set_default(queue_data->bridge_router,
+	stasis_message_router_add(queue_data->bridge_router, stasis_subscription_change_type(),
 			queue_bridge_cb, queue_data);
 
 	queue_data->channel_router = stasis_message_router_create_pool(ast_channel_topic_all());
@@ -7024,7 +7060,7 @@ static int setup_stasis_subs(struct queue_ent *qe, struct ast_channel *peer, str
 			handle_hangup, queue_data);
 	stasis_message_router_add(queue_data->channel_router, ast_channel_masquerade_type(),
 			handle_masquerade, queue_data);
-	stasis_message_router_set_default(queue_data->channel_router,
+	stasis_message_router_add(queue_data->channel_router, stasis_subscription_change_type(),
 			queue_channel_cb, queue_data);
 
 	return 0;
@@ -8043,6 +8079,11 @@ static void set_queue_member_pause(struct call_queue *q, struct member *mem, con
 	if (mem->paused == paused) {
 		ast_debug(1, "%spausing already-%spaused queue member %s:%s\n",
 			(paused ? "" : "un"), (paused ? "" : "un"), q->name, mem->interface);
+		if (log_unpause_on_reason_change && paused) {
+			if (!ast_strings_equal(mem->reason_paused, reason)) {
+				ast_queue_log(q->name, "NONE", mem->membername, "UNPAUSE", "%s", "Auto-Unpause");
+			}
+		}
 	}
 
 	if (mem->realtime && !ast_strlen_zero(mem->rt_uniqueid)) {
@@ -8903,8 +8944,14 @@ static int queue_exec(struct ast_channel *chan, const char *data)
 	}
 
 	if ((raise_penalty_str = pbx_builtin_getvar_helper(chan, "QUEUE_RAISE_PENALTY"))) {
+		 if (*raise_penalty_str == 'r') {
+			qe.raise_respect_min = 1;
+			raise_penalty_str++;
+		} else {
+			qe.raise_respect_min = 0;
+		}
 		if (sscanf(raise_penalty_str, "%30d", &raise_penalty) == 1) {
-			ast_debug(1, "%s: Got raise penalty %d from ${QUEUE_RAISE_PENALTY}.\n", ast_channel_name(chan), raise_penalty);
+			ast_debug(1, "%s: Got raise penalty %s%d from ${QUEUE_RAISE_PENALTY}.\n", ast_channel_name(chan), qe.raise_respect_min ? "r" : "", raise_penalty);
 		} else {
 			ast_log(LOG_WARNING, "${QUEUE_RAISE_PENALTY}: Invalid value (%s), channel %s.\n",
 				raise_penalty_str, ast_channel_name(chan));
@@ -8962,11 +9009,33 @@ static int queue_exec(struct ast_channel *chan, const char *data)
 
 	cid_allow = qe.parent->log_restricted_caller_id || ((ast_party_id_presentation(&ast_channel_caller(chan)->id) & AST_PRES_RESTRICTION) == AST_PRES_ALLOWED);
 	
-	ast_queue_log(args.queuename, ast_channel_uniqueid(chan), "NONE", "ENTERQUEUE", "%s|%s|%d",
-		S_OR(args.url, ""),
-		S_COR(cid_allow && ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, ""),
-		qe.opos);
+	if (log_caller_id_name) {
+		char *escaped_cidname = NULL;
+		/* Ensure caller ID name is valid and not NULL before processing */
+		if (cid_allow && ast_channel_caller(chan)->id.name.valid && ast_channel_caller(chan)->id.name.str) {
+			escaped_cidname = ast_strdupa(ast_channel_caller(chan)->id.name.str);
+			/* Only iterate if '|' is found */
+			if (strchr(escaped_cidname, '|')) {
+				for (char *p = escaped_cidname; *p; p++) {
+					if (*p == '|') {
+						*p = '_';
+					}
+				}
+			}
+		}
 
+		ast_queue_log(args.queuename, ast_channel_uniqueid(chan), "NONE", "ENTERQUEUE", "%s|%s|%d|%s",
+			S_OR(args.url, ""),
+			S_COR(cid_allow && ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, ""),
+			qe.opos,
+			S_OR(escaped_cidname, ""));
+	} else {
+ 		ast_queue_log(args.queuename, ast_channel_uniqueid(chan), "NONE", "ENTERQUEUE", "%s|%s|%d",
+ 			S_OR(args.url, ""),
+ 			S_COR(cid_allow && ast_channel_caller(chan)->id.number.valid, ast_channel_caller(chan)->id.number.str, ""),
+ 			qe.opos);
+	}
+	
 	/* PREDIAL: Preprocess any callee gosub arguments. */
 	if (ast_test_flag(&opts, OPT_PREDIAL_CALLEE)
 		&& !ast_strlen_zero(opt_args[OPT_ARG_PREDIAL_CALLEE])) {
@@ -9074,7 +9143,7 @@ check_turns:
 
 		if (qe.parent->leavewhenempty) {
 			int status = 0;
-			if ((status = get_member_status(qe.parent, qe.max_penalty, qe.min_penalty, qe.raise_penalty, qe.parent->leavewhenempty, 0))) {
+			if ((status = get_member_status(qe.parent, qe.max_penalty, qe.min_penalty, qe.raise_penalty, qe.parent->leavewhenempty, 0, qe.raise_respect_min))) {
 				record_abandoned(&qe);
 				reason = QUEUE_LEAVEEMPTY;
 				ast_queue_log(args.queuename, ast_channel_uniqueid(chan), "NONE", "EXITEMPTY", "%d|%d|%ld", qe.pos, qe.opos, (long)(time(NULL) - qe.start));
@@ -9847,6 +9916,7 @@ static void queue_reset_global_params(void)
 	negative_penalty_invalid = 0;
 	log_membername_as_agent = 0;
 	force_longest_waiting_caller = 0;
+	log_unpause_on_reason_change = 0;
 }
 
 /*! Set the global queue parameters as defined in the "general" section of queues.conf */
@@ -9874,6 +9944,13 @@ static void queue_set_global_params(struct ast_config *cfg)
 	}
 	if ((general_val = ast_variable_retrieve(cfg, "general", "force_longest_waiting_caller"))) {
 		force_longest_waiting_caller = ast_true(general_val);
+	}
+	if ((general_val = ast_variable_retrieve(cfg, "general", "log_unpause_on_reason_change"))) {
+		log_unpause_on_reason_change = ast_true(general_val);
+	}
+	/* Apply log-caller-id-name in the same place as other global settings */
+	if ((general_val = ast_variable_retrieve(cfg, "general", "log-caller-id-name"))) {
+		log_caller_id_name = ast_true(general_val);
 	}
 }
 
@@ -10616,7 +10693,7 @@ static char *complete_queue(const char *line, const char *word, int pos, int sta
 	queue_iter = ao2_iterator_init(queues, 0);
 	while ((q = ao2_t_iterator_next(&queue_iter, "Iterate through queues"))) {
 		if (!strncasecmp(word, q->name, wordlen) && ++which > state
-			&& (!word_list_offset || !word_in_list(word_list, q->name))) {
+			&& (!word_list_offset || !word_list || !word_in_list(word_list, q->name))) {
 			ret = ast_strdup(q->name);
 			queue_t_unref(q, "Done with iterator");
 			break;

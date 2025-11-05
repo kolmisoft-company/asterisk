@@ -1221,15 +1221,14 @@ static int chan_pjsip_devicestate(const char *data)
 			ast_devstate_aggregate_add(&aggregate, ast_state_chan2dev(snapshot->state));
 		}
 
-		if ((snapshot->state == AST_STATE_UP) || (snapshot->state == AST_STATE_RING) ||
-			(snapshot->state == AST_STATE_BUSY)) {
+		if (snapshot->state != AST_STATE_DOWN && snapshot->state != AST_STATE_RESERVED) {
 			inuse++;
 		}
 
 		ao2_ref(snapshot, -1);
 	}
 
-	if (endpoint->devicestate_busy_at && (inuse == endpoint->devicestate_busy_at)) {
+	if (endpoint->devicestate_busy_at && (inuse >= endpoint->devicestate_busy_at)) {
 		state = AST_DEVICE_BUSY;
 	} else if (ast_devstate_aggregate_result(&aggregate) != AST_DEVICE_INVALID) {
 		state = ast_devstate_aggregate_result(&aggregate);
@@ -1791,7 +1790,7 @@ static int chan_pjsip_indicate(struct ast_channel *ast, int condition, const voi
 		device_buf_size = strlen(ast_channel_name(ast)) + 1;
 		device_buf = alloca(device_buf_size);
 		ast_channel_get_device_name(ast, device_buf, device_buf_size);
-		ast_devstate_changed_literal(AST_DEVICE_ONHOLD, 1, device_buf);
+		ast_devstate_changed_literal(AST_DEVICE_UNKNOWN, AST_DEVSTATE_CACHABLE, device_buf);
 		if (!channel->session->moh_passthrough) {
 			ast_moh_start(ast, data, NULL);
 		} else {
@@ -1807,7 +1806,7 @@ static int chan_pjsip_indicate(struct ast_channel *ast, int condition, const voi
 		device_buf_size = strlen(ast_channel_name(ast)) + 1;
 		device_buf = alloca(device_buf_size);
 		ast_channel_get_device_name(ast, device_buf, device_buf_size);
-		ast_devstate_changed_literal(AST_DEVICE_UNKNOWN, 1, device_buf);
+		ast_devstate_changed_literal(AST_DEVICE_UNKNOWN, AST_DEVSTATE_CACHABLE, device_buf);
 		if (!channel->session->moh_passthrough) {
 			ast_moh_stop(ast);
 		} else {
@@ -1821,6 +1820,16 @@ static int chan_pjsip_indicate(struct ast_channel *ast, int condition, const voi
 	case AST_CONTROL_SRCUPDATE:
 		break;
 	case AST_CONTROL_SRCCHANGE:
+		if (!channel->session->endpoint->media.bundle) {
+			/* Generate a new SSRC due to media source change and RTP timestamp reset.
+			   Ensures RFC 3550 compliance and avoids SBC interoperability issues (Sonus/Ribbon)*/
+			for (i = 0; i < AST_VECTOR_SIZE(&channel->session->active_media_state->sessions); ++i) {
+				media = AST_VECTOR_GET(&channel->session->active_media_state->sessions, i);
+				if (media && media->rtp) {
+					ast_rtp_instance_change_source(media->rtp);
+				}
+			}
+		}
 		break;
 	case AST_CONTROL_REDIRECTING:
 		if (ast_channel_state(ast) != AST_STATE_UP) {
@@ -2395,13 +2404,12 @@ static void update_initial_connected_line(struct ast_sip_session *session)
 
 static int call(void *data)
 {
-	struct ast_sip_channel_pvt *channel = data;
-	struct ast_sip_session *session = channel->session;
+	struct ast_sip_session *session = data;
 	pjsip_tx_data *tdata;
 	int res = 0;
 	SCOPE_ENTER(1, "%s Topology: %s\n",
 		ast_sip_session_get_name(session),
-		ast_str_tmp(256, ast_stream_topology_to_str(channel->session->pending_media_state->topology, &STR_TMP))
+		ast_str_tmp(256, ast_stream_topology_to_str(session->pending_media_state->topology, &STR_TMP))
 		);
 
 
@@ -2415,7 +2423,6 @@ static int call(void *data)
 		update_initial_connected_line(session);
 		ast_sip_session_send_request(session, tdata);
 	}
-	ao2_ref(channel, -1);
 	SCOPE_EXIT_RTN_VALUE(res, "RC: %d\n", res);
 }
 
@@ -2423,16 +2430,24 @@ static int call(void *data)
 static int chan_pjsip_call(struct ast_channel *ast, const char *dest, int timeout)
 {
 	struct ast_sip_channel_pvt *channel = ast_channel_tech_pvt(ast);
-	SCOPE_ENTER(1, "%s Topology: %s\n", ast_sip_session_get_name(channel->session),
-		ast_str_tmp(256, ast_stream_topology_to_str(channel->session->pending_media_state->topology, &STR_TMP)));
+	struct ast_sip_session *session = ao2_bump(channel->session);
 
-	ao2_ref(channel, +1);
-	if (ast_sip_push_task(channel->session->serializer, call, channel)) {
+	SCOPE_ENTER(1, "%s Topology: %s\n", ast_sip_session_get_name(session),
+		ast_str_tmp(256, ast_stream_topology_to_str(session->pending_media_state->topology, &STR_TMP)));
+
+	ast_channel_unlock(ast);
+
+	/* The creation of the INVITE needs to be pushed synchronously to prevent a race condition
+	   with bridging on attended transfers that can result in a loss of set Caller ID. */
+	if (ast_sip_push_task_wait_serializer(session->serializer, call, session)) {
 		ast_log(LOG_WARNING, "Error attempting to place outbound call to '%s'\n", dest);
-		ao2_cleanup(channel);
+		ao2_ref(session, -1);
+		ast_channel_lock(ast);
 		SCOPE_EXIT_RTN_VALUE(-1, "Couldn't push task\n");
 	}
 
+	ao2_ref(session, -1);
+	ast_channel_lock(ast);
 	SCOPE_EXIT_RTN_VALUE(0, "'call' task pushed\n");
 }
 
@@ -2450,7 +2465,7 @@ static int hangup_cause2sip(int cause)
 	case AST_CAUSE_NO_USER_RESPONSE:        /* 18 */
 		return 408;
 	case AST_CAUSE_NO_ANSWER:               /* 19 */
-	case AST_CAUSE_UNREGISTERED:        /* 20 */
+	case AST_CAUSE_UNREGISTERED:            /* 20 */
 		return 480;
 	case AST_CAUSE_CALL_REJECTED:           /* 21 */
 		return 403;
@@ -2564,16 +2579,23 @@ static int chan_pjsip_hangup(struct ast_channel *ast)
 {
 	struct ast_sip_channel_pvt *channel = ast_channel_tech_pvt(ast);
 	int cause;
+	int tech_cause;
+	int original_tech_cause;
 	struct hangup_data *h_data;
 	SCOPE_ENTER(1, "%s\n", ast_channel_name(ast));
 
 	if (!channel || !channel->session) {
-		SCOPE_EXIT_RTN_VALUE(-1, "No channel or session\n");
+		SCOPE_EXIT_RTN_VALUE(-1, "%s: No channel or session\n", ast_channel_name(ast));
 	}
 
-	cause = hangup_cause2sip(ast_channel_hangupcause(channel->session->channel));
-	h_data = hangup_data_alloc(cause, ast);
+	cause = ast_channel_hangupcause(channel->session->channel);
+	tech_cause = hangup_cause2sip(cause);
+	original_tech_cause = ast_channel_tech_hangupcause(channel->session->channel);
+	if (!original_tech_cause) {
+		ast_channel_tech_hangupcause_set(channel->session->channel, tech_cause);
+	}
 
+	h_data = hangup_data_alloc(tech_cause, ast);
 	if (!h_data) {
 		goto failure;
 	}
@@ -2583,7 +2605,8 @@ static int chan_pjsip_hangup(struct ast_channel *ast)
 		goto failure;
 	}
 
-	SCOPE_EXIT_RTN_VALUE(0, "Cause: %d\n", cause);
+	SCOPE_EXIT_RTN_VALUE(0, "%s: Cause: %d  Tech Cause: %d\n", ast_channel_name(ast),
+		cause, tech_cause);
 
 failure:
 	/* Go ahead and do our cleanup of the session and channel even if we're not going
@@ -2593,7 +2616,7 @@ failure:
 	ao2_cleanup(channel);
 	ao2_cleanup(h_data);
 
-	SCOPE_EXIT_RTN_VALUE(-1, "Cause: %d\n", cause);
+	SCOPE_EXIT_RTN_VALUE(-1, "%s: Cause: %d\n", ast_channel_name(ast), cause);
 }
 
 struct request_data {
@@ -2930,7 +2953,7 @@ static void chan_pjsip_session_end(struct ast_sip_session *session)
 	SCOPE_ENTER(1, "%s\n", ast_sip_session_get_name(session));
 
 	if (!session->channel) {
-		SCOPE_EXIT_RTN("No channel\n");
+		SCOPE_EXIT_RTN("%s: No channel\n", ast_sip_session_get_name(session));
 	}
 
 
@@ -2946,6 +2969,24 @@ static void chan_pjsip_session_end(struct ast_sip_session *session)
 	chan_pjsip_remove_hold(ast_channel_uniqueid(session->channel));
 
 	ast_set_hangupsource(session->channel, ast_channel_name(session->channel), 0);
+
+	ast_trace(-1, "%s: channel cause: %d\n", ast_sip_session_get_name(session),
+		ast_channel_hangupcause(session->channel));
+
+	if (session->inv_session) {
+		/*
+		 * tech_hangupcause should only be set if off-nominal.
+		 */
+		if (session->inv_session->cause / 100 > 2) {
+			ast_trace(-1, "%s: inv_session cause: %d\n", ast_sip_session_get_name(session),
+				session->inv_session->cause);
+			ast_channel_tech_hangupcause_set(session->channel, session->inv_session->cause);
+		} else {
+			ast_trace(-1, "%s: inv_session cause: %d suppressed\n", ast_sip_session_get_name(session),
+				session->inv_session->cause);
+		}
+	}
+
 	if (!ast_channel_hangupcause(session->channel) && session->inv_session) {
 		int cause = ast_sip_hangup_sip2cause(session->inv_session->cause);
 
@@ -2954,7 +2995,7 @@ static void chan_pjsip_session_end(struct ast_sip_session *session)
 		ast_queue_hangup(session->channel);
 	}
 
-	SCOPE_EXIT_RTN();
+	SCOPE_EXIT_RTN("%s\n", ast_sip_session_get_name(session));
 }
 
 static void set_sipdomain_variable(struct ast_sip_session *session)

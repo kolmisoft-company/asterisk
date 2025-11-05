@@ -86,6 +86,16 @@ struct ao2_container *stasis_app_get_all(void);
 struct stasis_app *stasis_app_get_by_name(const char *name);
 
 /*!
+ * \brief Check if a Stasis application is registered.
+ *
+ * \param name The name of the registered Stasis application
+ *
+ * \return 1 if the application is registered.
+ * \return 0 if the application is not registered.
+ */
+int stasis_app_is_registered(const char *name);
+
+/*!
  * \brief Register a new Stasis application.
  *
  * If an application is already registered with the given name, the old
@@ -116,7 +126,7 @@ int stasis_app_register(const char *app_name, stasis_app_cb handler, void *data)
 int stasis_app_register_all(const char *app_name, stasis_app_cb handler, void *data);
 
 /*!
- * \brief Unregister a Stasis application.
+ * \brief Unregister a Stasis application and unsubscribe from all event sources.
  * \param app_name Name of the application to unregister.
  */
 void stasis_app_unregister(const char *app_name);
@@ -448,6 +458,20 @@ int stasis_app_control_is_done(
 	struct stasis_app_control *control);
 
 /*!
+ * \brief Set the failed flag on a control structure
+ *
+ * \param control Control object to be updated
+ */
+void stasis_app_control_mark_failed(struct stasis_app_control *control);
+
+/*!
+ * \brief Check if a control object is marked as "failed"
+ *
+ * \param control Control object to check
+ */
+int stasis_app_control_is_failed(const struct stasis_app_control *control);
+
+/*!
  * \brief Flush the control command queue.
  * \since 13.9.0
  *
@@ -543,6 +567,16 @@ int stasis_app_control_ring(struct stasis_app_control *control);
  * \return -1 for error.
  */
 int stasis_app_control_ring_stop(struct stasis_app_control *control);
+
+/*!
+ * \brief Indicate progress to the channel associated with this control.
+ *
+ * \param control Control for \c res_stasis.
+ *
+ * \return 0 for success.
+ * \return -1 for error.
+ */
+int stasis_app_control_progress(struct stasis_app_control *control);
 
 /*!
  * \brief Send DTMF to the channel associated with this control.

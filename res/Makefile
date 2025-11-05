@@ -62,7 +62,7 @@ $(call MOD_ADD_C,res_parking,$(wildcard parking/*.c))
 $(call MOD_ADD_C,res_pjsip,$(wildcard res_pjsip/*.c))
 $(call MOD_ADD_C,res_pjsip_session,$(wildcard res_pjsip_session/*.c))
 $(call MOD_ADD_C,res_prometheus,$(wildcard prometheus/*.c))
-$(call MOD_ADD_C,res_ari,ari/cli.c ari/config.c ari/ari_websockets.c)
+$(call MOD_ADD_C,res_ari,ari/cli.c ari/config.c ari/ari_websockets.c ari/ari_websocket_requests.c)
 $(call MOD_ADD_C,res_ari_model,ari/ari_model_validators.c)
 $(call MOD_ADD_C,res_stasis_recording,stasis_recording/stored.c)
 $(call MOD_ADD_C,res_stir_shaken,$(wildcard res_stir_shaken/*.c))
@@ -75,6 +75,21 @@ res_geolocation.so: res_geolocation/pidf_lo_test.o res_geolocation/pidf_to_eprof
 res_parking.o: _ASTCFLAGS+=$(AST_NO_FORMAT_TRUNCATION)
 snmp/agent.o: _ASTCFLAGS+=-fPIC
 res_snmp.o: _ASTCFLAGS+=-fPIC
+
+MODULE_EXCLUDE=ENABLE_SRTP_AES_192 ENABLE_SRTP_AES_256 ENABLE_SRTP_AES_GCM
+
+ifeq ($(findstring ENABLE_SRTP_AES_192,$(MENUSELECT_RES)),)
+res_srtp.o: _ASTCFLAGS+=-DENABLE_SRTP_AES_192
+endif
+
+ifeq ($(findstring ENABLE_SRTP_AES_256,$(MENUSELECT_RES)),)
+res_srtp.o: _ASTCFLAGS+=-DENABLE_SRTP_AES_256
+endif
+
+ifeq ($(findstring ENABLE_SRTP_AES_GCM,$(MENUSELECT_RES)),)
+res_srtp.o: _ASTCFLAGS+=-DENABLE_SRTP_AES_GCM
+endif
+
 
 # Dependencies for res_ari_*.so are generated, so they're in this file
 include ari.make

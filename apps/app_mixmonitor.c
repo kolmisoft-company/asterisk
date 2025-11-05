@@ -131,9 +131,11 @@
 						the file in the configured monitoring directory.</para>
 					</option>
 					<option name="D">
-						<para>Interleave the audio coming from the channel and the audio coming to the channel in
-						the output audio as a dual channel stream, rather than mix it.</para>
-						<note><para>Use .raw as the extension.</para></note>
+						<para>Interleave the audio coming from the channel and the audio
+						going to the channel and output it as a 2 channel (stereo)
+						raw stream rather than mixing it. You must use the
+						<literal>.raw</literal> file extension. Any other extension
+						will produce a corrupted file.</para>
 					</option>
 					<option name="n">
 						<para>When the <replaceable>r</replaceable> or <replaceable>t</replaceable> option is
@@ -171,7 +173,7 @@
 		</syntax>
 		<description>
 			<para>Records the audio on the current channel to the specified file.</para>
-			<para>This application does not automatically answer and should be preceeded by
+			<para>This application does not automatically answer and should be preceded by
 			an application such as Answer or Progress().</para>
 			<note><para>MixMonitor runs as an audiohook.</para></note>
 			<note><para>If a filename passed to MixMonitor ends with
@@ -189,6 +191,9 @@
 			parameters.  You risk a command injection attack executing arbitrary commands
 			if the untrusted strings aren't filtered to remove dangerous characters.  See
 			function <variable>FILTER()</variable>.</para></warning>
+			<warning><para>When using the <literal>D</literal> option to save
+			interleaved audio, you MUST use <literal>.raw</literal> as the
+			file extension.  Any other extension will produce a corrupted file.</para></warning>
 		</description>
 		<see-also>
 			<ref type="application">Monitor</ref>

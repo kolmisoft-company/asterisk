@@ -58,6 +58,15 @@ monitor-type = MixMonitor
 ;
 ;log_membername_as_agent = no
 ;
+; log-caller-id-name controls whether the Caller ID Name will be written to the
+; queue log. If enabled, and Caller ID would otherwise be logged (see
+; 'log-restricted-caller-id'), adds a 4th column to the ENTERQUEUE record which
+; contains the Caller ID Name. Any '|' characters in the Caller ID Name will be
+; replaced by a '_'. This setting applies globally to all queues.
+;
+; Default is 'no', which means the Caller ID Name is not stored.
+;log-caller-id-name = no
+;
 ; log-restricted-caller-id controls whether the Restricted Caller ID will be stored
 ; in the queue log.
 ; If log-restricted-caller-id=no then the Caller ID will be stripped if the Caller ID
@@ -72,6 +81,11 @@ monitor-type = MixMonitor
 ; call is not offered to the agent. The default value is 'no'.
 ;
 ;force_longest_waiting_caller = no
+;
+; Add unpause event to queue log in case of pause send twice with different reason code.
+;
+;log_unpause_on_reason_change = no
+;
 ;
 ;[markq]
 ;

@@ -96,6 +96,7 @@
 #include "asterisk/test.h"
 #include "asterisk/json.h"
 #include "asterisk/bridge.h"
+#include "asterisk/bridge_after.h"
 #include "asterisk/features_config.h"
 #include "asterisk/rtp_engine.h"
 #include "asterisk/format_cache.h"
@@ -3376,7 +3377,7 @@ static int action_login(struct mansession *s, const struct message *m)
 	astman_send_ack(s, m, "Authentication accepted");
 	if ((s->session->send_events & EVENT_FLAG_SYSTEM)
 		&& (s->session->readperm & EVENT_FLAG_SYSTEM)
-		&& ast_test_flag(&ast_options, AST_OPT_FLAG_FULLY_BOOTED)) {
+		&& ast_fully_booted) {
 		struct ast_str *auth = ast_str_alloca(MAX_AUTH_PERM_STRING);
 		const char *cat_str = authority_to_str(EVENT_FLAG_SYSTEM, &auth);
 		long uptime = 0;
@@ -3946,6 +3947,12 @@ static int action_sendtext(struct mansession *s, const struct message *m)
 	return 0;
 }
 
+static int async_goto_with_discard_bridge_after(struct ast_channel *chan, const char *context, const char *exten, int priority)
+{
+	ast_bridge_discard_after_goto(chan);
+	return ast_async_goto(chan, context, exten, priority);
+}
+
 /*! \brief  action_redirect: The redirect manager command */
 static int action_redirect(struct mansession *s, const struct message *m)
 {
@@ -4024,7 +4031,7 @@ static int action_redirect(struct mansession *s, const struct message *m)
 
 	if (ast_strlen_zero(name2)) {
 		/* Single channel redirect in progress. */
-		res = ast_async_goto(chan, context, exten, pi);
+		res = async_goto_with_discard_bridge_after(chan, context, exten, pi);
 		if (!res) {
 			astman_send_ack(s, m, "Redirect successful");
 		} else {
@@ -4063,12 +4070,12 @@ static int action_redirect(struct mansession *s, const struct message *m)
 	}
 	ast_channel_unlock(chan2);
 
-	res = ast_async_goto(chan, context, exten, pi);
+	res = async_goto_with_discard_bridge_after(chan, context, exten, pi);
 	if (!res) {
 		if (!ast_strlen_zero(context2)) {
-			res = ast_async_goto(chan2, context2, exten2, pi2);
+			res = async_goto_with_discard_bridge_after(chan2, context2, exten2, pi2);
 		} else {
-			res = ast_async_goto(chan2, context, exten, pi);
+			res = async_goto_with_discard_bridge_after(chan2, context, exten, pi);
 		}
 		if (!res) {
 			astman_send_ack(s, m, "Dual Redirect successful");
@@ -5520,6 +5527,9 @@ static int action_presencestate(struct mansession *s, const struct message *m)
 		                 message, message);
 	}
 	astman_append(s, "\r\n");
+
+	ast_free(subtype);
+	ast_free(message);
 
 	return 0;
 }
@@ -7459,7 +7469,9 @@ static int purge_sessions(int n_max)
 	}
 	i = ao2_iterator_init(sessions, 0);
 	ao2_ref(sessions, -1);
-	while ((session = ao2_iterator_next(&i)) && n_max > 0) {
+
+	/* The order of operations is significant */
+	while (n_max > 0 && (session = ao2_iterator_next(&i))) {
 		ao2_lock(session);
 		if (session->sessiontimeout && (now > session->sessiontimeout) && !session->inuse) {
 			if (session->authenticated
