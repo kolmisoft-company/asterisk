@@ -34690,7 +34690,7 @@ static char *sip_reload(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a
 		if ((a) && (a->argc == 3) && (!strncasecmp(a->argv[2], "keeprt", 6))) {
 			sip_reloading_keep_realtime = TRUE;
 		} else {
-			sip_reloading_keep_realtime = FALSE;
+			sip_reloading_keep_realtime = TRUE;
 		}
 	}
 	ast_mutex_unlock(&sip_reload_lock);
