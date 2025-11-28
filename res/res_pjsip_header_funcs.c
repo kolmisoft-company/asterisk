@@ -1095,8 +1095,8 @@ static int func_export_header(struct ast_channel *chan, const char *cmd, char *d
 							 const char *value)
 {
 	if (chan) {
-		if (strncmp(ast_channel_name(chan), "PJSIP/", 6)) {
-			ast_log(LOG_ERROR, "This function requires a PJSIP channel.\n");
+		if (strncmp(ast_channel_name(chan), "PJSIP/", 6) && strncmp(ast_channel_name(chan), "Local/", 6)) {
+			ast_log(LOG_ERROR, "This function requires a PJSIP/Local channel.\n");
 			return -1;
 		}
 
@@ -1148,8 +1148,8 @@ static int func_remove_exported_header(struct ast_channel *chan, const char *cmd
 							 const char *value)
 {
 	if (chan) {
-		if (strncmp(ast_channel_name(chan), "PJSIP/", 6)) {
-			ast_log(LOG_ERROR, "This function requires a PJSIP channel.\n");
+		if (strncmp(ast_channel_name(chan), "PJSIP/", 6) && strncmp(ast_channel_name(chan), "Local/", 6)) {
+			ast_log(LOG_ERROR, "This function requires a PJSIP/Local channel.\n");
 			return -1;
 		}
 
