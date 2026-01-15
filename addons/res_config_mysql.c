@@ -323,7 +323,7 @@ static struct ast_variable *realtime_mysql(const char *database, const char *tab
 	const struct ast_variable *field = rt_fields;
 	struct ast_variable *var=NULL, *prev=NULL;
 	/* Kolmisoft */
-	char sip_driver_condition[50];
+	char sip_driver_condition[100];
 
 	if (!(dbh = find_database(database, 0))) {
 		ast_log(LOG_WARNING, "MySQL RealTime: Invalid database specified: %s (check res_mysql.conf)\n", database);
@@ -362,9 +362,9 @@ static struct ast_variable *realtime_mysql(const char *database, const char *tab
 	}
 
 	/* Kolmisoft */
-	/* Add special 'sip_driver' condition when retrieving data from 'devices' table to skip PJSIP devices */
+	/* Add special 'sip_driver' and 'hide_from_user' conditions when retrieving data from 'devices' table to skip PJSIP and blocked devices */
 	if (strcmp(table, "devices") == 0) {
-		strcpy(sip_driver_condition, "sip_driver = 'chan_sip' AND ");
+		strcpy(sip_driver_condition, "sip_driver = 'chan_sip' AND hide_from_user = 0 AND ");
 	} else {
 		sip_driver_condition[0] = '\0';
 	}
@@ -446,7 +446,7 @@ static struct ast_config *realtime_multi_mysql(const char *database, const char 
 	struct ast_config *cfg = NULL;
 	struct ast_category *cat = NULL;
 	/* Kolmisoft */
-	char sip_driver_condition[50];
+	char sip_driver_condition[100];
 
 	if (!(dbh = find_database(database, 0))) {
 		ast_log(LOG_WARNING, "MySQL RealTime: Invalid database specified: '%s' (check res_mysql.conf)\n", database);
@@ -499,9 +499,9 @@ static struct ast_config *realtime_multi_mysql(const char *database, const char 
 	}
 
 	/* Kolmisoft */
-	/* Add special 'sip_driver' condition when retrieving data from 'devices' table to skip PJSIP devices */
+	/* Add special 'sip_driver' and 'hide_from_user' conditions when retrieving data from 'devices' table to skip PJSIP and blocked devices */
 	if (strcmp(table, "devices") == 0) {
-		strcpy(sip_driver_condition, "sip_driver = 'chan_sip' AND ");
+		strcpy(sip_driver_condition, "sip_driver = 'chan_sip' AND hide_from_user = 0 AND ");
 	} else {
 		sip_driver_condition[0] = '\0';
 	}
