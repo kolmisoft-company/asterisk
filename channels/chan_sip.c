@@ -931,6 +931,7 @@ AST_MUTEX_DEFINE_STATIC(sip_reload_lock);
 static pthread_t monitor_thread = AST_PTHREADT_NULL;
 
 static int sip_registry_diff_reload = 0;                /*!< Flag shows if we need to reload registry by diff files Kolmisoft */
+static int kolmisoft_skip_chan_sip_endpoints = 1;       /*!< Flag shows if we need to skip endpoint stasis creation Kolmisoft */
 static int sip_reloading_keep_realtime = FALSE;         /*!< Flag to keep realtime alone Kolmisoft */
 static int sip_reloading = FALSE;                       /*!< Flag for avoiding multiple reloads at the same time */
 static enum channelreloadreason sip_reloadreason;       /*!< Reason for last reload/load of configuration */
@@ -5408,8 +5409,10 @@ static void sip_destroy_peer(struct sip_peer *peer)
 
 	ast_rtp_dtls_cfg_free(&peer->dtls_cfg);
 
-	ast_endpoint_shutdown(peer->endpoint);
-	peer->endpoint = NULL;
+	if (peer->endpoint) {
+		ast_endpoint_shutdown(peer->endpoint);
+		peer->endpoint = NULL;
+	}
 }
 
 /*! \brief Update peer data in database (if used) */
@@ -18121,9 +18124,11 @@ static enum check_auth_result register_verify(struct sip_pvt *p, struct ast_sock
 	if (!peer && sip_cfg.autocreatepeer != AUTOPEERS_DISABLED) {
 		/* Create peer if we have autocreate mode enabled */
 		peer = temp_peer(name);
-		if (peer && !(peer->endpoint = ast_endpoint_create("SIP", name))) {
-			ao2_t_ref(peer, -1, "failed to allocate Stasis endpoint, drop peer");
-			peer = NULL;
+		if (!kolmisoft_skip_chan_sip_endpoints) {
+			if (peer && !(peer->endpoint = ast_endpoint_create("SIP", name))) {
+				ao2_t_ref(peer, -1, "failed to allocate Stasis endpoint, drop peer");
+				peer = NULL;
+			}
 		}
 		if (peer) {
 			ao2_t_link(peers, peer, "link peer into peer table");
@@ -31838,9 +31843,11 @@ static struct sip_peer *build_peer(const char *name, struct ast_variable *v_head
 		if (!(peer = ao2_t_alloc(sizeof(*peer), sip_destroy_peer_fn, "allocate a peer struct"))) {
 			return NULL;
 		}
-		if (!(peer->endpoint = ast_endpoint_create("SIP", name))) {
-			ao2_t_ref(peer, -1, "failed to allocate endpoint, drop peer");
-			return NULL;
+		if (!kolmisoft_skip_chan_sip_endpoints) {
+			if (!(peer->endpoint = ast_endpoint_create("SIP", name))) {
+				ao2_t_ref(peer, -1, "failed to allocate endpoint, drop peer");
+				return NULL;
+			}
 		}
 		if (!(peer->caps = ast_format_cap_alloc(AST_FORMAT_CAP_FLAG_DEFAULT))) {
 			ao2_t_ref(peer, -1, "failed to allocate format capabilities, drop peer");
@@ -33402,6 +33409,8 @@ static int reload_config(enum channelreloadreason reason)
 
 		} else if (!strcasecmp(v->name, "registry_diff_reload")) { /* Kolmisoft */
 			sip_registry_diff_reload = atoi(v->value);
+		} else if (!strcasecmp(v->name, "kolmisoft_skip_chan_sip_endpoints")) { /* Kolmisoft */
+			kolmisoft_skip_chan_sip_endpoints = atoi(v->value);
 		} else if (!strcasecmp(v->name, "register")) {
 			if (sip_register(v->value, v->lineno) == 0) {
 				registry_count++;
