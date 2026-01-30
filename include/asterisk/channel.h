@@ -4059,10 +4059,13 @@ int ast_channel_redirecting_sub(struct ast_channel *autoservice_chan, struct ast
  * This function makes use of datastore operations on the channel, so
  * it is important to lock the channel before calling this function.
  *
+ * \warning You should call this function only if \ref ast_cc_is_enabled()
+ * returns true.
+ *
  * \param chan The channel to create the datastore on
  * \param base_params CCSS parameters we wish to copy into the channel
  * \retval 0 Success
- * \retval -1 Failure
+ * \retval -1 Failure or CCSS is globally disabled.
  */
 int ast_channel_cc_params_init(struct ast_channel *chan,
 		const struct ast_cc_config_params *base_params);
@@ -4075,8 +4078,11 @@ int ast_channel_cc_params_init(struct ast_channel *chan,
  * This function makes use of datastore operations on the channel, so
  * it is important to lock the channel before calling this function.
  *
+ * \warning You should call this function only if \ref ast_cc_is_enabled()
+ * returns true.
+ *
  * \param chan Channel to retrieve parameters from
- * \retval NULL Failure
+ * \retval NULL Failure or CCSS is globally disabled.
  * \retval non-NULL The parameters desired
  */
 struct ast_cc_config_params *ast_channel_get_cc_config_params(struct ast_channel *chan);
@@ -4545,24 +4551,6 @@ struct ast_str *ast_channel_dialed_causes_channels(const struct ast_channel *cha
  * \retval Pointer to a ref-counted ast_control_pvt_cause_code object containing the desired information
  */
 struct ast_control_pvt_cause_code *ast_channel_dialed_causes_find(const struct ast_channel *chan, const char *chan_name);
-
-/*!
- * \since 20.17.0, 22.8.0, 23.1.0
- * \brief Retrieve a ref-counted cause code information structure iterator
- *
- * \details
- * This function makes use of datastore operations on the channel, so
- * it is important to lock the channel before calling this function.
- * This function increases the ref count of the returned object, so the
- * calling function must decrease the reference count when it is finished
- * with the object.
- *
- * \param chan The channel from which to retrieve information
- * \param chan_name The name of the channel about which to retrieve information
- * \retval NULL on search failure
- * \retval Pointer to a ao2_iterator object containing the desired information
- */
-struct ao2_iterator *ast_channel_dialed_causes_find_multiple(const struct ast_channel *chan, const char *chan_name);
 
 /*!
  * \since 11

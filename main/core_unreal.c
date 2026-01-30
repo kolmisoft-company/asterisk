@@ -896,7 +896,9 @@ void ast_unreal_call_setup(struct ast_channel *semi1, struct ast_channel *semi2)
 	ast_channel_accountcode_set(semi2, ast_channel_peeraccount(semi1));
 	ast_channel_peeraccount_set(semi2, ast_channel_accountcode(semi1));
 
-	ast_channel_cc_params_init(semi2, ast_channel_get_cc_config_params(semi1));
+	if (ast_cc_is_enabled()) {
+		ast_channel_cc_params_init(semi2, ast_channel_get_cc_config_params(semi1));
+	}
 
 	/*
 	 * Make sure we inherit the AST_CAUSE_ANSWERED_ELSEWHERE if it's
@@ -1042,7 +1044,7 @@ int ast_unreal_hangup(struct ast_unreal_pvt *p, struct ast_channel *ast)
 		ast_clear_flag(p, AST_UNREAL_CARETAKER_THREAD);
 		p->chan = NULL;
 		if (p->owner) {
-			const char *status = pbx_builtin_getvar_helper(p->chan, "DIALSTATUS");
+			const char *status = pbx_builtin_getvar_helper(chan, "DIALSTATUS");
 
 			if (status) {
 				ast_channel_hangupcause_set(p->owner, cause);
@@ -1259,16 +1261,17 @@ struct ast_channel *ast_unreal_new_channels(struct ast_unreal_pvt *p,
 
 	ast_jb_configure(owner, &p->jb_conf);
 
-	if (ast_channel_cc_params_init(owner, requestor
-		? ast_channel_get_cc_config_params((struct ast_channel *) requestor) : NULL)) {
-		ast_channel_tech_pvt_set(owner, NULL);
-		ao2_ref(p, -1);
-		ast_channel_tech_pvt_set(owner, NULL);
-		ast_channel_unlock(owner);
-		ast_channel_release(owner);
-		return NULL;
+	if (ast_cc_is_enabled()) {
+		if (ast_channel_cc_params_init(owner, requestor
+			? ast_channel_get_cc_config_params((struct ast_channel *) requestor) : NULL)) {
+			ast_channel_tech_pvt_set(owner, NULL);
+			ao2_ref(p, -1);
+			ast_channel_tech_pvt_set(owner, NULL);
+			ast_channel_unlock(owner);
+			ast_channel_release(owner);
+			return NULL;
+		}
 	}
-
 	p->owner = owner;
 	ast_channel_unlock(owner);
 
