@@ -24593,7 +24593,44 @@ static void handle_response_invite(struct sip_pvt *p, int resp, const char *rest
 
 			ast_channel_queue_redirecting_update(p->owner, &redirecting, &update_redirecting);
 
-			ast_queue_control(p->owner, AST_CONTROL_BUSY);
+			/* Kolmisoft: only SIP 480 + Reason Q.850 cause=20 leaves the legacy
+			 * BUSY path. Hang up as cause 19 so Dial reports NOANSWER (cause 20
+			 * would become CHANUNAVAIL → 603) and stash MOR_SIP_REASON_HGC=20 so
+			 * mor() can return cause 20. Any other 480 stays AST_CONTROL_BUSY. */
+			{
+				int reason_cause = 0;
+				const char *rh = sip_get_header(req, "Reason");
+
+				if (!ast_strlen_zero(rh)) {
+					rh = ast_skip_blanks(rh);
+					if (!strncasecmp(rh, "Q.850", 5)) {
+						const char *rp = strstr(rh, "cause=");
+
+						if (rp && sscanf(rp + 6, "%3d", &reason_cause) == 1) {
+							reason_cause &= 0x7f;
+						}
+					}
+				}
+
+				if (reason_cause == AST_CAUSE_UNREGISTERED && p->owner) {
+					struct ast_channel_iterator *iter;
+					struct ast_channel *c;
+					const char *linkedid = ast_channel_linkedid(p->owner);
+
+					if (!ast_strlen_zero(linkedid) && (iter = ast_channel_iterator_all_new())) {
+						while ((c = ast_channel_iterator_next(iter))) {
+							if (!strcmp(S_OR(ast_channel_linkedid(c), ""), linkedid)) {
+								pbx_builtin_setvar_helper(c, "MOR_SIP_REASON_HGC", "20");
+							}
+							c = ast_channel_unref(c);
+						}
+						ast_channel_iterator_destroy(iter);
+					}
+					sip_queue_hangup_cause(p, AST_CAUSE_NO_ANSWER);
+				} else {
+					ast_queue_control(p->owner, AST_CONTROL_BUSY);
+				}
+			}
 		}
 		break;
 	case 487: /* Cancelled transaction */
