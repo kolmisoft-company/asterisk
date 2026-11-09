@@ -385,6 +385,11 @@ static struct ast_variable *realtime_mysql(const char *database, const char *tab
 		ast_str_append(&sql, 0, " AND %s%s '%s'%s", field->name, op, ast_str_buffer(buf), escape);
 	}
 
+	/* Kolmisoft: ast_load_realtime is a single-row lookup. Without LIMIT 1,
+	 * every device on the same ipaddr/port is returned and chan_sip joins
+	 * their fullcontact values into one malformed qualify URI. */
+	ast_str_append(&sql, 0, " LIMIT 1");
+
 	ast_debug(1, "MySQL RealTime: Retrieve SQL: %s\n", ast_str_buffer(sql));
 
 	/* Execution. */
